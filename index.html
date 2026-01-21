@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>thehouseofconrad.com</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rubik+Wet+Paint&family=Oswald:wght@400;600;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+
+<body>
+  <main class="wrap">
+    <h1 class="title">The House of Conrad</h1>
+
+    <section class="card">
+      <!-- ORIGINAL suck-it guy (keep BOTH frames + #frameA id) -->
+      <div id="chopWrap" class="chop-wrap chopping" aria-label="Chop guy">
+        <img id="frameA" class="chop-frame a" src="./assets/chop-a.png" alt="Chop frame A" />
+        <img class="chop-frame b" src="./assets/chop-b.png" alt="Chop frame B" />
+      </div>
+
+      <p class="counter">Suck Its <span id="chopCount">0</span></p>
+
+      <div class="buttons">
+        <button id="toggleChop" type="button">Stop SuckNit</button>
+        <button id="resetChop" type="button">Reset</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">What??? Coming Soon</footer>
+
+  <!-- RED CHAT BADGE + TITLE -->
+  <div class="chat-badge" aria-label="Awesomo chat badge">
+    <button
+      id="awesomoFab"
+      class="awesomo-fab"
+      type="button"
+      popovertarget="awesomoPopover"
+      popovertargetaction="show"
+      aria-label="Open AWESOMO 3000 chat"
+    >
+      <img class="awesomo-fab__img" src="./assets/cartman-chat.png" alt="AWESOMO avatar" />
+    </button>
+
+    <div class="chat-title">CHAT WITH<br>AWESOMO 3000<br>AI TODAY</div>
+  </div>
+
+  <!-- MANUAL popover = no auto-close from outside clicks -->
+  <div id="awesomoPopover" class="awesomo-popover" popover="manual">
+    <header class="awesomo-popover__header">
+      <img class="awesomo-avatar" src="./assets/cartman-chat.png" alt="AWESOMO avatar" />
+
+      <div class="awesomo-popover__title">
+        <div class="awesomo-popover__name">AWESOMO 3000</div>
+        <div class="awesomo-popover__sub">AI Chat</div>
+      </div>
+
+      <button
+        class="awesomo-close"
+        type="button"
+        popovertarget="awesomoPopover"
+        popovertargetaction="hide"
+        aria-label="Close chat"
+      >✕</button>
+    </header>
+
+    <div id="awesomoLog" class="awesomo-log" role="log" aria-live="polite"></div>
+
+    <form id="awesomoForm" class="awesomo-form" autocomplete="off">
+      <input
+        id="awesomoInput"
+        class="awesomo-input"
+        type="text"
+        placeholder="Type a question…"
+        maxlength="160"
+        required
+      />
+      <button type="submit">Send</button>
+    </form>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

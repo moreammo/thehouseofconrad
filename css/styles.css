@@ -1,0 +1,391 @@
+/* css/styles.css — Suck-it guy works + red AWESOMO chat badge + manual popover */
+
+:root{
+  --bg: #060608;
+  --red: #ff1b1b;
+  --neon: #39ff14;
+  --neon-blue: #0051ff;
+  --white: #ffffff;
+  --footer-h: 56px;
+}
+
+*{ box-sizing: border-box; }
+
+body{
+  margin: 0;
+  min-height: 100vh;
+  padding: 0;
+  color: var(--white);
+
+  font-family: "Oswald", system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+
+  background-image: url("../assets/background.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
+}
+
+@media (max-width: 768px){
+  body{ background-attachment: scroll; }
+}
+
+.wrap{
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+  text-align: center;
+  padding: 26px 16px;
+
+  /* ensures chop guy never hides behind fixed footer */
+  padding-bottom: calc(var(--footer-h) + 24px);
+}
+
+.title{
+  margin: 0 0 18px;
+  font-family: "Rubik Wet Paint", system-ui, sans-serif;
+  font-size: clamp(42px, 6vw, 82px);
+  letter-spacing: 1px;
+
+  color: var(--neon);
+  -webkit-text-stroke: 0.5px var(--red);
+
+  text-shadow:
+    0 6px 0 rgba(0,0,0,0.80),
+    0 0 14px rgba(255,27,27,0.30),
+    0 0 18px rgba(57,255,20,0.25);
+}
+
+@media (max-width: 768px) {
+  .title{
+    text-shadow:
+      0 4px 0 rgba(0,0,0,0.75),
+      0 0 10px rgba(255,27,27,0.12),
+      0 0 14px rgba(57,255,20,0.20);
+  }
+}
+
+.card{
+  margin: 0 auto;
+  width: 100%;
+  max-width: 760px;
+  padding: 18px;
+  border-radius: 18px;
+
+  background: rgba(0,0,0,0.65);
+  border: 3px solid rgba(255,27,27,0.65);
+  box-shadow:
+    0 22px 70px rgba(0,0,0,0.7),
+    0 0 0 4px rgba(57,255,20,0.12) inset;
+
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+@supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
+  .card{ background: rgba(0,0,0,0.82); }
+}
+
+/* ===== Suck-it guy (two-frame animation) ===== */
+.chop-wrap{
+  width: 100%;
+  max-width: 560px;
+  aspect-ratio: 1 / 1;
+  margin: 0 auto 14px;
+  position: relative;
+
+  border-radius: 18px;
+  outline: 2px solid rgba(255,255,255,0.12);
+  box-shadow:
+    0 18px 40px rgba(0,0,0,0.45),
+    0 0 0 6px rgba(255,27,27,0.12),
+    0 0 0 12px rgba(57,255,20,0.10);
+}
+
+.chop-frame{
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.chop-frame.a{ opacity: 1; }
+.chop-frame.b{ opacity: 0; }
+
+.chop-wrap.chopping .chop-frame.a{ animation: showA 1.0s infinite; }
+.chop-wrap.chopping .chop-frame.b{ animation: showB 1.0s infinite; }
+
+@keyframes showA{
+  0%, 49.99% { opacity: 1; }
+  50%, 100%  { opacity: 0; }
+}
+
+@keyframes showB{
+  0%, 49.99% { opacity: 0; }
+  50%, 100%  { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce){
+  .chop-wrap.chopping .chop-frame.a,
+  .chop-wrap.chopping .chop-frame.b{
+    animation: none !important;
+  }
+}
+
+/* ===== Counter + buttons ===== */
+.counter{
+  margin: 10px 0 12px;
+  font-size: 18px;
+}
+
+.counter span{
+  color: var(--neon-blue);
+  font-weight: 900;
+  text-shadow:
+    0 0 12px rgba(0, 26, 255, 0.40),
+    0 0 10px rgba(255,27,27,0.22),
+    0 0 10px rgba(57,255,20,0.15);
+}
+
+.buttons{
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+button{
+  font-family: inherit;
+  text-transform: uppercase;
+
+  background: rgba(15,15,20,0.92);
+  color: var(--white);
+
+  border: 2px solid rgba(255,27,27,0.75);
+  padding: 10px 14px;
+  border-radius: 12px;
+
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.45);
+}
+
+button:hover{
+  border-color: rgba(57,255,20,0.85);
+  box-shadow:
+    0 8px 20px rgba(0,0,0,0.45),
+    0 0 0 4px rgba(57,255,20,0.12);
+}
+
+button:focus-visible{
+  outline: 3px solid rgba(57,255,20,0.85);
+  outline-offset: 3px;
+}
+
+@supports not selector(:focus-visible) {
+  button:focus{
+    outline: 3px solid rgba(57,255,20,0.85);
+    outline-offset: 3px;
+  }
+}
+
+/* ===== Footer ===== */
+.site-footer{
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--footer-h);
+
+  display: grid;
+  place-items: center;
+
+  font-family: "Rubik Wet Paint", system-ui, sans-serif;
+  letter-spacing: 1px;
+  font-size: 16px;
+
+  color: var(--neon-blue);
+  background: rgba(0,0,0,0.80);
+  border-top: 3px solid var(--neon-blue);
+
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 10;
+
+  text-shadow:
+    0 2px 0 rgba(0,0,0,0.90),
+    0 0 16px rgba(4, 217, 255, 0.65),
+    0 0 10px rgba(255,27,27,0.25);
+}
+
+/* ===== Floating AWESOMO badge (red + pops) ===== */
+.chat-badge{
+  position: fixed;
+  right: 20px;
+  bottom: calc(var(--footer-h) + 18px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  z-index: 20;
+}
+
+.awesomo-fab{
+  width: 66px;
+  height: 66px;
+  border-radius: 999px;
+
+  border: 3px solid var(--red);
+  background: rgba(255, 27, 27, 0.12);
+  cursor: pointer;
+
+  box-shadow:
+    0 18px 52px rgba(255, 27, 27, 0.30),
+    0 0 0 5px rgba(255, 27, 27, 0.22);
+}
+
+.awesomo-fab:hover{
+  border-color: var(--neon);
+  box-shadow:
+    0 18px 52px rgba(255, 27, 27, 0.40),
+    0 0 0 6px rgba(57,255,20,0.35);
+}
+
+.awesomo-fab__img{
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.chat-title{
+  font-family: "Rubik Wet Paint", system-ui, sans-serif;
+  font-size: 12px;
+  letter-spacing: 1.2px;
+  text-align: right;
+  line-height: 1.1;
+
+  color: var(--red);
+  text-shadow:
+    0 1px 0 rgba(0,0,0,0.9),
+    0 0 10px rgba(255, 27, 27, 0.80),
+    0 0 18px rgba(255, 27, 27, 0.45),
+    0 0 28px rgba(255, 27, 27, 0.25);
+}
+
+/* ===== Popover chat styles ===== */
+.awesomo-popover{
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--footer-h) + 98px);
+  width: min(380px, calc(100vw - 32px));
+
+  padding: 0;
+  border-radius: 16px;
+
+  border: 2px solid rgba(255,27,27,0.65);
+  background: rgba(0,0,0,0.88);
+  color: var(--white);
+
+  z-index: 30;
+
+  box-shadow:
+    0 24px 80px rgba(0,0,0,0.65),
+    0 0 0 5px rgba(255,27,27,0.10) inset;
+}
+
+.awesomo-popover__header{
+  display: grid;
+  grid-template-columns: 46px 1fr 42px;
+  align-items: center;
+  gap: 10px;
+
+  padding: 10px 10px 10px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+}
+
+.awesomo-avatar{
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 2px solid rgba(255,27,27,0.85);
+  box-shadow: 0 0 18px rgba(255, 27, 27, 0.22);
+}
+
+.awesomo-popover__name{
+  font-family: "Rubik Wet Paint", system-ui, sans-serif;
+  letter-spacing: 1px;
+  color: var(--red);
+  text-shadow: 0 0 14px rgba(255, 27, 27, 0.55);
+}
+
+.awesomo-popover__sub{
+  font-size: 12px;
+  opacity: 0.85;
+  text-transform: none;
+  letter-spacing: 0.2px;
+}
+
+.awesomo-close{
+  width: 38px;
+  height: 34px;
+  border-radius: 10px;
+  border: 2px solid rgba(255,27,27,0.55);
+  background: rgba(15,15,20,0.92);
+  color: var(--white);
+  cursor: pointer;
+}
+
+.awesomo-log{
+  height: 230px;
+  overflow: auto;
+  padding: 12px;
+  text-transform: none;
+  letter-spacing: 0.2px;
+}
+
+.awesomo-msg{
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+.awesomo-msg strong{
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.awesomo-msg.user strong{ color: rgba(57,255,20,0.95); }
+.awesomo-msg.bot strong{
+  color: var(--red);
+  text-shadow: 0 0 12px rgba(255, 27, 27, 0.45);
+}
+
+.awesomo-form{
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid rgba(255,255,255,0.10);
+}
+
+.awesomo-input{
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+
+  background: rgba(15,15,20,0.92);
+  color: var(--white);
+  border: 2px solid rgba(255,27,27,0.55);
+  font-family: inherit;
+}
+
+.awesomo-input:focus-visible{
+  outline: 3px solid rgba(57,255,20,0.85);
+  outline-offset: 2px;
+}
