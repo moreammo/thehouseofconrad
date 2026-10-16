@@ -1,0 +1,12 @@
+name = "shortener"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+# Create both with: npx wrangler kv namespace create LINKS / VISITS, then paste the ids.
+[[kv_namespaces]]
+binding = "LINKS"   # key = short code / alias, value = destination URL
+id = "REPLACE_WITH_LINKS_ID"
+
+[[kv_namespaces]]
+binding = "VISITS"  # key = <code>:<ms>:<uuid>, value = JSON visit record
+id = "REPLACE_WITH_VISITS_ID"
