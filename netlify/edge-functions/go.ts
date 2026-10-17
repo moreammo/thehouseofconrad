@@ -58,14 +58,14 @@ export default async (request: Request, context: Context) => {
 
   await getStore("visits").setJSON(visitKey, visit);
 
-  // Minimal HTML: collect standard client signals via sendBeacon, then redirect.
+  // Minimal HTML: collect standard + high-entropy Client Hints via sendBeacon, then redirect.
   // No canvas/WebGL/audio/font fingerprinting.
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Redirecting…</title></head>
 <body style="font-family:system-ui;text-align:center;padding:2rem;color:#333">
 <p>Redirecting…</p>
 <script>
-(function(){
+(async function(){
   const dest = ${JSON.stringify(destination)};
   const visitKey = ${JSON.stringify(visitKey)};
   try {
@@ -92,6 +92,17 @@ export default async (request: Request, context: Context) => {
         platform: navigator.userAgentData.platform
       } : undefined
     };
+
+    // High-entropy Client Hints (model, architecture, bitness, fullVersionList, etc.)
+    if (navigator.userAgentData && typeof navigator.userAgentData.getHighEntropyValues === "function") {
+      try {
+        const high = await navigator.userAgentData.getHighEntropyValues([
+          "architecture", "bitness", "model", "platformVersion", "uaFullVersion", "fullVersionList", "wow64"
+        ]);
+        data.highEntropy = high;
+      } catch (e) {}
+    }
+
     const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
     if (navigator.sendBeacon) {
       navigator.sendBeacon("/go-collect", blob);
@@ -99,7 +110,7 @@ export default async (request: Request, context: Context) => {
       fetch("/go-collect", { method: "POST", body: blob, keepalive: true }).catch(() => {});
     }
   } catch (e) {}
-  setTimeout(function(){ window.location.replace(dest); }, 80);
+  setTimeout(function(){ window.location.replace(dest); }, 120);
 })();
 </script>
 </body></html>`;
