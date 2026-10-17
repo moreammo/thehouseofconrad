@@ -2,7 +2,8 @@ import type { Config } from "@netlify/edge-functions";
 import { getStore } from "@netlify/blobs";
 
 // thehouseofconrad.com/go-stats : password-protected dashboard for the /go/ links.
-// Login: any username, password = STATS_PASSWORD env var (Netlify site settings).
+// Login: STATS_USERNAME / STATS_PASSWORD env vars (Netlify site settings).
+// If STATS_USERNAME is not set, any username works.
 
 type Visit = {
   code: string;
@@ -23,12 +24,14 @@ type Visit = {
 const esc = (s: unknown) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-function authorized(request: Request, password: string) {
+function authorized(request: Request, password: string, username?: string) {
   const header = request.headers.get("Authorization") ?? "";
   if (!header.startsWith("Basic ")) return false;
   try {
     const decoded = atob(header.slice(6));
-    return decoded.slice(decoded.indexOf(":") + 1) === password;
+    const i = decoded.indexOf(":");
+    if (username && decoded.slice(0, i) !== username) return false;
+    return decoded.slice(i + 1) === password;
   } catch {
     return false;
   }
@@ -67,7 +70,7 @@ function table(title: string, rows: [string, number][]) {
 export default async (request: Request) => {
   const password = Netlify.env.get("STATS_PASSWORD");
   if (!password) return new Response("Set STATS_PASSWORD in Netlify environment variables.", { status: 500 });
-  if (!authorized(request, password)) {
+  if (!authorized(request, password, Netlify.env.get("STATS_USERNAME"))) {
     return new Response("Login required", {
       status: 401,
       headers: { "WWW-Authenticate": 'Basic realm="go-stats"' },
