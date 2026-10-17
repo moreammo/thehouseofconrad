@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="./css/styles.css" />
   <style>
     .stats-login{display:inline-block;padding:12px 20px;border:2px solid var(--red);border-radius:12px;background:rgba(15,15,20,.92);color:var(--white);text-decoration:none;font:inherit;min-height:44px}
+    .stats-login-sub{display:block;margin-top:3px;font-size:11px;letter-spacing:1px;opacity:.65}
     .stats-login:hover{border-color:var(--white)}
     .stats-login:focus-visible{outline:3px solid var(--white);outline-offset:3px}
   </style>
@@ -36,7 +37,7 @@
       </div>
     </section>
     <nav aria-label="Site management" style="margin-top:20px">
-      <a class="stats-login" href="/go-stats">Stats Login</a>
+      <a class="stats-login" href="/go-stats" aria-label="The Receipts — log in to link stats">The Receipts<span class="stats-login-sub">Authorized snooping</span></a>
     </nav>
   </main>
 
