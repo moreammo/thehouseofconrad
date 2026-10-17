@@ -10,6 +10,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Oswald:wght@400;600;700&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="./css/styles.css" />
+  <style>
+    .stats-login{display:inline-block;padding:12px 20px;border:2px solid var(--red);border-radius:12px;background:rgba(15,15,20,.92);color:var(--white);text-decoration:none;font:inherit;min-height:44px}
+    .stats-login:hover{border-color:var(--white)}
+    .stats-login:focus-visible{outline:3px solid var(--white);outline-offset:3px}
+  </style>
 </head>
 
 <body>
@@ -30,6 +35,9 @@
         <button id="resetChop" type="button">Reset</button>
       </div>
     </section>
+    <nav aria-label="Site management" style="margin-top:20px">
+      <a class="stats-login" href="/go-stats">Stats Login</a>
+    </nav>
   </main>
 
   <footer class="site-footer">Who's That Coming Down the Tracks?</footer>
