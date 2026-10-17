@@ -7,6 +7,7 @@ import { getStore } from "@netlify/blobs";
 
 type Visit = {
   code: string;
+  name?: string;
   timestamp: string;
   ip?: string;
   userAgent?: string | null;
@@ -43,6 +44,8 @@ type Visit = {
   highEntropy?: any;
 };
 
+type Link = { code: string; destination: string; name: string };
+
 const esc = (s: unknown) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -59,10 +62,28 @@ function authorized(request: Request, password: string, username?: string) {
   }
 }
 
-// No 0/O/1/l/I so codes read cleanly off a sign or a text.
 function randomCode() {
   const chars = "abcdefghjkmnpqrstuvwxyz23456789";
   return Array.from(crypto.getRandomValues(new Uint8Array(5)), (b) => chars[b % chars.length]).join("");
+}
+
+function parseLink(code: string, raw: string): Link {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed.destination === "string") {
+        return {
+          code,
+          destination: parsed.destination,
+          name: typeof parsed.name === "string" ? parsed.name : "",
+        };
+      }
+    } catch {
+      // plain URL stored before names existed
+    }
+  }
+  return { code, destination: trimmed, name: "" };
 }
 
 function device(ua?: string | null) {
@@ -76,13 +97,10 @@ function device(ua?: string | null) {
 function extractModel(ua?: string | null, highEntropy?: any): string {
   if (highEntropy?.model && highEntropy.model !== "") return highEntropy.model;
   if (!ua) return "";
-  // Common Android model patterns
   const android = ua.match(/Android[^;]*;\s*([^;)]+?)(?:\s+Build|\)|;)/i);
   if (android && android[1] && !/Linux|wv|Mobile/i.test(android[1])) return android[1].trim();
-  // iPhone / iPad
   if (/iPhone/i.test(ua)) return "iPhone";
   if (/iPad/i.test(ua)) return "iPad";
-  // Other
   const model = ua.match(/(SM-[A-Z0-9]+|Pixel [0-9]+|Nexus [0-9]+|OnePlus|Xiaomi|Redmi|POCO|Huawei|Honor)/i);
   if (model) return model[1];
   return "";
@@ -132,13 +150,12 @@ export default async (request: Request) => {
   const visits = getStore("visits");
   const url = new URL(request.url);
 
-  // Add / update / delete a link from the form.
   if (request.method === "POST") {
-    // Browsers resend Basic auth cross-site, so only accept posts from this page.
     if (request.headers.get("Origin") !== url.origin) return new Response("Bad origin", { status: 403 });
     const form = await request.formData();
     let code = String(form.get("code") ?? "").trim();
     const destination = String(form.get("destination") ?? "").trim();
+    const name = String(form.get("name") ?? "").trim().slice(0, 80);
     if (code && !/^[A-Za-z0-9_-]+$/.test(code)) return new Response("Code: letters, numbers, - and _ only", { status: 400 });
     if (form.get("delete")) {
       if (code) await links.delete(code);
@@ -149,9 +166,8 @@ export default async (request: Request) => {
     } catch {
       return new Response("Destination must be a full http(s) URL", { status: 400 });
     }
-    // Blank code = make one up.
     while (!code || (!form.get("code") && (await links.get(code)) !== null)) code = randomCode();
-    await links.set(code, destination);
+    await links.set(code, JSON.stringify({ destination, name }));
     return Response.redirect(`${url.origin}/go-stats?new=${encodeURIComponent(code)}`, 303);
   }
 
@@ -160,12 +176,11 @@ export default async (request: Request) => {
   const created = url.searchParams.get("new") ?? "";
 
   const { blobs: linkKeys } = await links.list();
-  const linkRows = await Promise.all(
-    linkKeys.map(async ({ key }) => [key, (await links.get(key, { type: "text" })) ?? ""] as const),
+  const linkRows: Link[] = await Promise.all(
+    linkKeys.map(async ({ key }) => parseLink(key, (await links.get(key, { type: "text" })) ?? "")),
   );
+  const nameByCode = new Map(linkRows.map((r) => [r.code, r.name]));
 
-  // ponytail: reads every visit on each page load. Fine into the low thousands;
-  // past that, roll visits into daily summary blobs.
   const { blobs: visitKeys } = await visits.list(filter ? { prefix: `${filter}/` } : {});
   let all = (
     await Promise.all(visitKeys.map(({ key }) => visits.get(key, { type: "json" }) as Promise<Visit | null>))
@@ -178,29 +193,32 @@ export default async (request: Request) => {
   const perCode = new Map(tally(all.map((v) => v.code)));
   const place = (v: Visit) => [v.city, v.regionCode, v.country].filter(Boolean).join(", ") || "Unknown";
   const fmt = (iso: string) =>
-    new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "short", timeStyle: "short" });
+    new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "short", timeStyle: "medium" });
+  const linkName = (v: Visit) => v.name || nameByCode.get(v.code) || "";
 
   const linksTable = linkRows.length
     ? linkRows
         .map(
-          ([code, dest]) => `<tr>
-            <td><a href="?code=${encodeURIComponent(code)}">${esc(code)}</a></td>
-            <td class="dest"><a href="${esc(dest)}" target="_blank" rel="noopener">${esc(dest)}</a></td>
-            <td class="n">${filter && filter !== code ? "" : perCode.get(code) ?? 0}</td>
-            <td><button type="button" class="copy" data-url="${esc(`${url.origin}/go/${code}`)}">Copy</button></td>
+          (row) => `<tr>
+            <td>${esc(row.name || "—")}</td>
+            <td><a href="?code=${encodeURIComponent(row.code)}">${esc(row.code)}</a></td>
+            <td class="dest"><a href="${esc(row.destination)}" target="_blank" rel="noopener">${esc(row.destination)}</a></td>
+            <td class="n">${filter && filter !== row.code ? "" : perCode.get(row.code) ?? 0}</td>
+            <td><button type="button" class="copy" data-url="${esc(`${url.origin}/go/${row.code}`)}">Copy</button></td>
           </tr>`,
         )
         .join("")
-    : `<tr><td colspan="4" class="muted">No links yet. Add one below.</td></tr>`;
+    : `<tr><td colspan="5" class="muted">No links yet. Add one below.</td></tr>`;
 
   const recent = all
     .slice(0, 200)
-    .map(
-      (v) => {
-        const model = extractModel(v.userAgent, v.highEntropy);
-        const deviceLabel = model ? `${device(v.userAgent)} (${model})` : device(v.userAgent);
-        return `<tr class="row">
+    .map((v) => {
+      const model = extractModel(v.userAgent, v.highEntropy);
+      const deviceLabel = model ? `${device(v.userAgent)} (${model})` : device(v.userAgent);
+      const name = linkName(v);
+      return `<tr class="row">
         <td>${esc(fmt(v.timestamp))}</td>
+        <td>${esc(name || "—")}</td>
         <td>${esc(v.code)}</td>
         <td>${esc(place(v))}${v.postalCode ? ` ${esc(v.postalCode)}` : ""}</td>
         <td>${esc(deviceLabel)}${badges(v)}</td>
@@ -208,8 +226,10 @@ export default async (request: Request) => {
         <td>${esc(v.ip)}</td>
         <td class="more-btn">Details ▸</td>
       </tr>
-      <tr class="details" hidden><td colspan="7"><dl>
-        <dt>Time (ET)</dt><dd>${esc(new Date(v.timestamp).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "full", timeStyle: "long" }))}</dd>
+      <tr class="details" hidden><td colspan="8"><dl>
+        <dt>Click time (ET)</dt><dd>${esc(new Date(v.timestamp).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "full", timeStyle: "long" }))}</dd>
+        <dt>Link name</dt><dd>${esc(name || "No name")}</dd>
+        <dt>Code</dt><dd>${esc(v.code)}</dd>
         <dt>Visitor's local time zone</dt><dd>${esc(v.clientTimezone || v.timezone || "Unknown")}</dd>
         <dt>IP timezone</dt><dd>${esc(v.ipTimezone || v.timezone || "Unknown")}</dd>
         <dt>Timezone mismatch</dt><dd>${v.timezoneMismatch ? "Yes" : "No"}</dd>
@@ -238,8 +258,7 @@ export default async (request: Request) => {
         <dt>Referrer</dt><dd>${esc(v.referrer || "None (direct, text message, QR code or app)")}</dd>
         <dt>User agent</dt><dd>${esc(v.userAgent ?? "Unknown")}</dd>
       </dl></td></tr>`;
-      },
-    )
+    })
     .join("");
 
   const last24 = all.filter((v) => Date.now() - Date.parse(v.timestamp) < 864e5).length;
@@ -286,7 +305,7 @@ export default async (request: Request) => {
   .badge.mismatch{ background:#4d8bff; color:#fff; }
   @media (max-width:600px){ dl{ grid-template-columns:1fr; } dd{ margin-bottom:6px; } }
   form{ display:flex; flex-wrap:wrap; gap:8px; }
-  input{ flex:1 1 200px; padding:10px; border-radius:8px; border:1px solid var(--line); background:#000; color:var(--white); font:inherit; }
+  input{ flex:1 1 180px; padding:10px; border-radius:8px; border:1px solid var(--line); background:#000; color:var(--white); font:inherit; }
   button{ padding:10px 16px; border-radius:8px; border:1px solid var(--neon); background:transparent; color:var(--neon); font:inherit; text-transform:uppercase; cursor:pointer; }
   button.del{ border-color:var(--red); color:var(--red); }
   button.copy{ padding:4px 10px; font-size:12px; }
@@ -313,13 +332,14 @@ export default async (request: Request) => {
 
   <section class="card">
     <h2>Links</h2>
-    <table><tr><th>Code</th><th>Goes to</th><th class="n">Clicks</th><th></th></tr>${linksTable}</table>
+    <table><tr><th>Link name</th><th>Code</th><th>Goes to</th><th class="n">Clicks</th><th></th></tr>${linksTable}</table>
   </section>
 
   <section class="card">
     <h2>Shorten a link</h2>
     <form method="post">
-      <input name="destination" type="url" placeholder="Paste the long URL here">
+      <input name="name" placeholder="Link name (optional, e.g. Friday game)" maxlength="80">
+      <input name="destination" type="url" placeholder="Paste the long URL here" required>
       <input name="code" placeholder="Custom code (optional, blank = random)" pattern="[A-Za-z0-9_-]+">
       <button type="submit">Shorten</button>
       <button type="submit" name="delete" value="1" class="del" formnovalidate>Delete code</button>
@@ -334,10 +354,10 @@ export default async (request: Request) => {
 
   <section class="card">
     <h2>Recent clicks${all.length > 200 ? " (latest 200)" : ""}</h2>
-    <p class="muted">Click any row to see everything recorded for that click. Model comes from User-Agent or high-entropy Client Hints when available.</p>
+    <p class="muted">Click any row for the full record. Click time is Eastern. Link name is the name on the short link.</p>
     <table>
-      <tr><th>When (ET)</th><th>Code</th><th>Location</th><th>Device</th><th>Referrer</th><th>IP</th><th></th></tr>
-      ${recent || `<tr><td colspan="7" class="muted">No clicks yet</td></tr>`}
+      <tr><th>Click time (ET)</th><th>Link name</th><th>Code</th><th>Location</th><th>Device</th><th>Referrer</th><th>IP</th><th></th></tr>
+      ${recent || `<tr><td colspan="8" class="muted">No clicks yet</td></tr>`}
     </table>
   </section>
 </main>
