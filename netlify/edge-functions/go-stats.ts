@@ -19,6 +19,28 @@ type Visit = {
   latitude?: number;
   longitude?: number;
   timezone?: string;
+  isProxy?: boolean;
+  isHosting?: boolean;
+  isp?: string;
+  ipTimezone?: string;
+  clientTimezone?: string;
+  timezoneMismatch?: boolean;
+  screenWidth?: number;
+  screenHeight?: number;
+  availWidth?: number;
+  availHeight?: number;
+  colorDepth?: number;
+  devicePixelRatio?: number;
+  viewportWidth?: number;
+  viewportHeight?: number;
+  languages?: string[];
+  hardwareConcurrency?: number;
+  deviceMemory?: number;
+  maxTouchPoints?: number;
+  platform?: string;
+  connectionType?: string;
+  userAgentData?: any;
+  highEntropy?: any;
 };
 
 const esc = (s: unknown) =>
@@ -51,6 +73,21 @@ function device(ua?: string | null) {
   return "Desktop";
 }
 
+function extractModel(ua?: string | null, highEntropy?: any): string {
+  if (highEntropy?.model && highEntropy.model !== "") return highEntropy.model;
+  if (!ua) return "";
+  // Common Android model patterns
+  const android = ua.match(/Android[^;]*;\s*([^;)]+?)(?:\s+Build|\)|;)/i);
+  if (android && android[1] && !/Linux|wv|Mobile/i.test(android[1])) return android[1].trim();
+  // iPhone / iPad
+  if (/iPhone/i.test(ua)) return "iPhone";
+  if (/iPad/i.test(ua)) return "iPad";
+  // Other
+  const model = ua.match(/(SM-[A-Z0-9]+|Pixel [0-9]+|Nexus [0-9]+|OnePlus|Xiaomi|Redmi|POCO|Huawei|Honor)/i);
+  if (model) return model[1];
+  return "";
+}
+
 function referrerHost(ref?: string | null) {
   if (!ref) return "Direct / text / QR";
   try {
@@ -71,6 +108,14 @@ function table(title: string, rows: [string, number][]) {
     ? rows.slice(0, 10).map(([k, n]) => `<tr><td>${esc(k)}</td><td class="n">${n}</td></tr>`).join("")
     : `<tr><td colspan="2" class="muted">No data yet</td></tr>`;
   return `<section class="card"><h2>${esc(title)}</h2><table>${body}</table></section>`;
+}
+
+function badges(v: Visit) {
+  const parts: string[] = [];
+  if (v.isProxy) parts.push(`<span class="badge vpn">VPN/Proxy</span>`);
+  if (v.isHosting) parts.push(`<span class="badge hosting">Hosting</span>`);
+  if (v.timezoneMismatch) parts.push(`<span class="badge mismatch">TZ mismatch</span>`);
+  return parts.length ? ` ${parts.join(" ")}` : "";
 }
 
 export default async (request: Request) => {
@@ -111,6 +156,7 @@ export default async (request: Request) => {
   }
 
   const filter = url.searchParams.get("code") ?? "";
+  const anonOnly = url.searchParams.get("anon") === "1";
   const created = url.searchParams.get("new") ?? "";
 
   const { blobs: linkKeys } = await links.list();
@@ -121,11 +167,13 @@ export default async (request: Request) => {
   // ponytail: reads every visit on each page load. Fine into the low thousands;
   // past that, roll visits into daily summary blobs.
   const { blobs: visitKeys } = await visits.list(filter ? { prefix: `${filter}/` } : {});
-  const all = (
+  let all = (
     await Promise.all(visitKeys.map(({ key }) => visits.get(key, { type: "json" }) as Promise<Visit | null>))
   )
     .filter((v): v is Visit => !!v)
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+  if (anonOnly) all = all.filter((v) => v.isProxy || v.isHosting);
 
   const perCode = new Map(tally(all.map((v) => v.code)));
   const place = (v: Visit) => [v.city, v.regionCode, v.country].filter(Boolean).join(", ") || "Unknown";
@@ -148,28 +196,49 @@ export default async (request: Request) => {
   const recent = all
     .slice(0, 200)
     .map(
-      (v) => `<tr class="row">
+      (v) => {
+        const model = extractModel(v.userAgent, v.highEntropy);
+        const deviceLabel = model ? `${device(v.userAgent)} (${model})` : device(v.userAgent);
+        return `<tr class="row">
         <td>${esc(fmt(v.timestamp))}</td>
         <td>${esc(v.code)}</td>
         <td>${esc(place(v))}${v.postalCode ? ` ${esc(v.postalCode)}` : ""}</td>
-        <td>${esc(device(v.userAgent))}</td>
+        <td>${esc(deviceLabel)}${badges(v)}</td>
         <td>${esc(referrerHost(v.referrer))}</td>
         <td>${esc(v.ip)}</td>
         <td class="more-btn">Details ▸</td>
       </tr>
       <tr class="details" hidden><td colspan="7"><dl>
         <dt>Time (ET)</dt><dd>${esc(new Date(v.timestamp).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "full", timeStyle: "long" }))}</dd>
-        <dt>Visitor's local time zone</dt><dd>${esc(v.timezone ?? "Unknown")}</dd>
+        <dt>Visitor's local time zone</dt><dd>${esc(v.clientTimezone || v.timezone || "Unknown")}</dd>
+        <dt>IP timezone</dt><dd>${esc(v.ipTimezone || v.timezone || "Unknown")}</dd>
+        <dt>Timezone mismatch</dt><dd>${v.timezoneMismatch ? "Yes" : "No"}</dd>
         <dt>City</dt><dd>${esc(v.city ?? "Unknown")}</dd>
         <dt>State / region</dt><dd>${esc([v.region, v.regionCode && `(${v.regionCode})`].filter(Boolean).join(" ") || "Unknown")}</dd>
         <dt>ZIP / postal</dt><dd>${esc(v.postalCode ?? "Unknown")}</dd>
         <dt>Country</dt><dd>${esc(v.country ?? "Unknown")}</dd>
         <dt>Lat / long</dt><dd>${v.latitude != null && v.longitude != null ? `<a href="https://www.google.com/maps?q=${v.latitude},${v.longitude}" target="_blank" rel="noopener">${esc(v.latitude)}, ${esc(v.longitude)} (map)</a> <span class="muted">approximate, city level</span>` : "Unknown"}</dd>
         <dt>IP address</dt><dd>${v.ip ? `${esc(v.ip)} <a href="https://ipinfo.io/${encodeURIComponent(v.ip)}" target="_blank" rel="noopener">(look up owner)</a>` : "Unknown"}</dd>
-        <dt>Device</dt><dd>${esc(device(v.userAgent))}</dd>
+        <dt>ISP</dt><dd>${esc(v.isp ?? "Unknown")}</dd>
+        <dt>VPN / Proxy</dt><dd>${v.isProxy ? "Yes" : "No"}</dd>
+        <dt>Hosting / Datacenter</dt><dd>${v.isHosting ? "Yes" : "No"}</dd>
+        <dt>Device class</dt><dd>${esc(device(v.userAgent))}</dd>
+        <dt>Model</dt><dd>${esc(model || "Not available")}</dd>
+        <dt>Screen</dt><dd>${v.screenWidth && v.screenHeight ? `${v.screenWidth}×${v.screenHeight}` : "Unknown"} ${v.devicePixelRatio ? `(${v.devicePixelRatio}x)` : ""}</dd>
+        <dt>Viewport</dt><dd>${v.viewportWidth && v.viewportHeight ? `${v.viewportWidth}×${v.viewportHeight}` : "Unknown"}</dd>
+        <dt>Languages</dt><dd>${esc((v.languages || []).join(", ") || "Unknown")}</dd>
+        <dt>Hardware concurrency</dt><dd>${v.hardwareConcurrency ?? "Unknown"}</dd>
+        <dt>Device memory</dt><dd>${v.deviceMemory ? `${v.deviceMemory} GB` : "Unknown"}</dd>
+        <dt>Touch points</dt><dd>${v.maxTouchPoints ?? "Unknown"}</dd>
+        <dt>Platform</dt><dd>${esc(v.platform || "Unknown")}</dd>
+        <dt>Connection</dt><dd>${esc(v.connectionType || "Unknown")}</dd>
+        <dt>High-entropy model</dt><dd>${esc(v.highEntropy?.model || "Not reported")}</dd>
+        <dt>Architecture / bitness</dt><dd>${esc([v.highEntropy?.architecture, v.highEntropy?.bitness].filter(Boolean).join(" / ") || "Unknown")}</dd>
+        <dt>Platform version</dt><dd>${esc(v.highEntropy?.platformVersion || "Unknown")}</dd>
         <dt>Referrer</dt><dd>${esc(v.referrer || "None (direct, text message, QR code or app)")}</dd>
         <dt>User agent</dt><dd>${esc(v.userAgent ?? "Unknown")}</dd>
-      </dl></td></tr>`,
+      </dl></td></tr>`;
+      },
     )
     .join("");
 
@@ -211,6 +280,10 @@ export default async (request: Request) => {
   dl{ display:grid; grid-template-columns:max-content 1fr; gap:6px 16px; margin:4px 0; }
   dt{ color:rgba(255,255,255,.6); text-transform:uppercase; font-size:12px; padding-top:2px; }
   dd{ margin:0; overflow-wrap:anywhere; }
+  .badge{ display:inline-block; font-size:11px; padding:2px 6px; border-radius:4px; margin-left:4px; font-weight:600; text-transform:uppercase; }
+  .badge.vpn{ background:#ff1b1b; color:#fff; }
+  .badge.hosting{ background:#ff9f1b; color:#000; }
+  .badge.mismatch{ background:#4d8bff; color:#fff; }
   @media (max-width:600px){ dl{ grid-template-columns:1fr; } dd{ margin-bottom:6px; } }
   form{ display:flex; flex-wrap:wrap; gap:8px; }
   input{ flex:1 1 200px; padding:10px; border-radius:8px; border:1px solid var(--line); background:#000; color:var(--white); font:inherit; }
@@ -220,12 +293,15 @@ export default async (request: Request) => {
   .filter{ margin-bottom:12px; }
   .new{ border-color:var(--neon); }
   .new p{ margin:0; font-size:18px; overflow-wrap:anywhere; }
+  .notice{ font-size:13px; color:rgba(255,255,255,.55); margin:0 0 16px; text-align:center; }
 </style></head>
 <body><main class="wrap">
   <h1>Link Stats</h1>
   <p class="sub">thehouseofconrad.com/go/…</p>
+  <p class="notice">This site logs visit and basic device information (including Client Hints) for link analytics.</p>
   ${created ? `<section class="card new"><h2>Short link ready</h2><p><b>${esc(`${url.origin}/go/${created}`)}</b> <button type="button" class="copy" data-url="${esc(`${url.origin}/go/${created}`)}">Copy</button></p></section>` : ""}
   ${filter ? `<p class="filter">Showing <b>${esc(filter)}</b> only. <a href="/go-stats">Show all</a></p>` : ""}
+  <p class="filter">${anonOnly ? `<a href="/go-stats">Show all visits</a>` : `<a href="?anon=1">Show VPN / hosting only</a>`}</p>
 
   <div class="kpis">
     <div class="kpi"><b>${all.length}</b><span>Total clicks</span></div>
@@ -258,7 +334,7 @@ export default async (request: Request) => {
 
   <section class="card">
     <h2>Recent clicks${all.length > 200 ? " (latest 200)" : ""}</h2>
-    <p class="muted">Click any row to see everything recorded for that click.</p>
+    <p class="muted">Click any row to see everything recorded for that click. Model comes from User-Agent or high-entropy Client Hints when available.</p>
     <table>
       <tr><th>When (ET)</th><th>Code</th><th>Location</th><th>Device</th><th>Referrer</th><th>IP</th><th></th></tr>
       ${recent || `<tr><td colspan="7" class="muted">No clicks yet</td></tr>`}
