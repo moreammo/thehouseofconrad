@@ -148,15 +148,28 @@ export default async (request: Request) => {
   const recent = all
     .slice(0, 200)
     .map(
-      (v) => `<tr>
+      (v) => `<tr class="row">
         <td>${esc(fmt(v.timestamp))}</td>
         <td>${esc(v.code)}</td>
         <td>${esc(place(v))}${v.postalCode ? ` ${esc(v.postalCode)}` : ""}</td>
         <td>${esc(device(v.userAgent))}</td>
         <td>${esc(referrerHost(v.referrer))}</td>
         <td>${esc(v.ip)}</td>
-        <td class="ua" title="${esc(v.userAgent)}">${esc(v.userAgent)}</td>
-      </tr>`,
+        <td class="more-btn">Details ▸</td>
+      </tr>
+      <tr class="details" hidden><td colspan="7"><dl>
+        <dt>Time (ET)</dt><dd>${esc(new Date(v.timestamp).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "full", timeStyle: "long" }))}</dd>
+        <dt>Visitor's local time zone</dt><dd>${esc(v.timezone ?? "Unknown")}</dd>
+        <dt>City</dt><dd>${esc(v.city ?? "Unknown")}</dd>
+        <dt>State / region</dt><dd>${esc([v.region, v.regionCode && `(${v.regionCode})`].filter(Boolean).join(" ") || "Unknown")}</dd>
+        <dt>ZIP / postal</dt><dd>${esc(v.postalCode ?? "Unknown")}</dd>
+        <dt>Country</dt><dd>${esc(v.country ?? "Unknown")}</dd>
+        <dt>Lat / long</dt><dd>${v.latitude != null && v.longitude != null ? `<a href="https://www.google.com/maps?q=${v.latitude},${v.longitude}" target="_blank" rel="noopener">${esc(v.latitude)}, ${esc(v.longitude)} (map)</a> <span class="muted">approximate, city level</span>` : "Unknown"}</dd>
+        <dt>IP address</dt><dd>${v.ip ? `${esc(v.ip)} <a href="https://ipinfo.io/${encodeURIComponent(v.ip)}" target="_blank" rel="noopener">(look up owner)</a>` : "Unknown"}</dd>
+        <dt>Device</dt><dd>${esc(device(v.userAgent))}</dd>
+        <dt>Referrer</dt><dd>${esc(v.referrer || "None (direct, text message, QR code or app)")}</dd>
+        <dt>User agent</dt><dd>${esc(v.userAgent ?? "Unknown")}</dd>
+      </dl></td></tr>`,
     )
     .join("");
 
@@ -190,7 +203,15 @@ export default async (request: Request) => {
   .n{ text-align:right; color:var(--neon); font-weight:600; }
   .muted{ color:rgba(255,255,255,.5); }
   .dest{ max-width:420px; overflow-wrap:anywhere; }
-  .ua{ max-width:260px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:rgba(255,255,255,.55); font-size:12px; }
+  tr.row{ cursor:pointer; }
+  tr.row:hover td{ background:rgba(255,255,255,.04); }
+  tr.row.open .more-btn{ color:var(--neon); }
+  .more-btn{ color:var(--blue); white-space:nowrap; }
+  .details td{ background:rgba(0,0,0,.45); }
+  dl{ display:grid; grid-template-columns:max-content 1fr; gap:6px 16px; margin:4px 0; }
+  dt{ color:rgba(255,255,255,.6); text-transform:uppercase; font-size:12px; padding-top:2px; }
+  dd{ margin:0; overflow-wrap:anywhere; }
+  @media (max-width:600px){ dl{ grid-template-columns:1fr; } dd{ margin-bottom:6px; } }
   form{ display:flex; flex-wrap:wrap; gap:8px; }
   input{ flex:1 1 200px; padding:10px; border-radius:8px; border:1px solid var(--line); background:#000; color:var(--white); font:inherit; }
   button{ padding:10px 16px; border-radius:8px; border:1px solid var(--neon); background:transparent; color:var(--neon); font:inherit; text-transform:uppercase; cursor:pointer; }
@@ -237,14 +258,22 @@ export default async (request: Request) => {
 
   <section class="card">
     <h2>Recent clicks${all.length > 200 ? " (latest 200)" : ""}</h2>
+    <p class="muted">Click any row to see everything recorded for that click.</p>
     <table>
-      <tr><th>When (ET)</th><th>Code</th><th>Location</th><th>Device</th><th>Referrer</th><th>IP</th><th>User agent</th></tr>
+      <tr><th>When (ET)</th><th>Code</th><th>Location</th><th>Device</th><th>Referrer</th><th>IP</th><th></th></tr>
       ${recent || `<tr><td colspan="7" class="muted">No clicks yet</td></tr>`}
     </table>
   </section>
 </main>
 <script>
   document.addEventListener("click", (e) => {
+    const row = e.target.closest("tr.row");
+    if (row && !e.target.closest("a")) {
+      row.classList.toggle("open");
+      row.nextElementSibling.hidden = !row.classList.contains("open");
+      row.querySelector(".more-btn").textContent = row.classList.contains("open") ? "Hide ▾" : "Details ▸";
+      return;
+    }
     const b = e.target.closest(".copy");
     if (!b) return;
     navigator.clipboard.writeText(b.dataset.url).then(() => { b.textContent = "Copied"; setTimeout(() => (b.textContent = "Copy"), 1200); });
