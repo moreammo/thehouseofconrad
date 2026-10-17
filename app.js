@@ -11,29 +11,31 @@ let chopping = true; // auto-start (matches the "chopping" class in HTML)
 let chops = 0;
 
 function render() {
+  if (!countEl || !toggleBtn) return;
   countEl.textContent = String(chops);
-  toggleBtn.textContent = chopping ? "Stop SuckNit" : "Start chopping";
+  toggleBtn.textContent = chopping ? "Stop SuckNit" : "Start SuckNit";
 }
 
 // Fires each time frameA's animation loops (once per chop cycle)
-frameA.addEventListener("animationiteration", () => {
+frameA?.addEventListener("animationiteration", () => {
   if (!chopping) return;
   chops += 1;
   render();
 });
 
-toggleBtn.addEventListener("click", () => {
+toggleBtn?.addEventListener("click", () => {
   chopping = !chopping;
-  wrap.classList.toggle("chopping", chopping);
+  wrap?.classList.toggle("chopping", chopping);
   render();
 });
 
-resetBtn.addEventListener("click", () => {
+resetBtn?.addEventListener("click", () => {
   chops = 0;
   render();
 });
 
-render();
+// Only render if counter elements exist
+if (countEl && toggleBtn) render();
 
 
 // =========================
@@ -44,27 +46,15 @@ const form = document.querySelector("#awesomoForm");
 const input = document.querySelector("#awesomoInput");
 const log = document.querySelector("#awesomoLog");
 
-const awesomoLines = [
-  "Beep boop. That question is beneath me.",
-  "Processing… nope.",
-  "That is not in my database. Also, no.",
-  "Beep. Your request has been denied.",
-  "I am AWESOMO 3000. I do what I want.",
-  "If I knew where Mel Gibson was, I'd be down on my knees licking his balls.",
-  "I checked on the internet, Kyle, and getting Butters to put my wiener in his mouth wouldn't make me not gay!",
-  "Dear guys, words cannot describe how much I hate you guys.",
-  "Eh, you get your bitch ass back in the kitchen and make me some pie",
-  "Kyle! YOU JEW BITCH!",
-  "I'll make you eat your parents! Nya nya nya nya nyaaaa nya!",
-  "I'm not fat, I just haven't grown into my body yet you skinny bitch",
-  "Don't call me fat, you fucking Jew!",
-  "Kyle's mom's a bitch, she's a big fat bitch!"
-];
+console.log("AWESOMO init:", { popover, form, input, log });
 
 let greeted = false;
 
-function escapeHtml(str){
-  return String(str)
+// Keep a lightweight conversation history for better replies
+let history = []; // [{ role: "user"|"assistant", content: "..." }]
+
+function escapeHtml(s) {
+  return String(s)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -72,18 +62,33 @@ function escapeHtml(str){
     .replaceAll("'", "&#039;");
 }
 
-function addMsg(who, text){
+function addMsg(who, text) {
+  if (!log) return null;
   const p = document.createElement("p");
   p.className = `awesomo-msg ${who}`;
   p.innerHTML = `<strong>${who === "user" ? "You" : "AWESOMO"}</strong>: ${escapeHtml(text)}`;
   log.appendChild(p);
   log.scrollTop = log.scrollHeight;
+  return p;
 }
 
-function getReply(){
-  return awesomoLines[Math.floor(Math.random() * awesomoLines.length)];
+async function callAwesomo(userText) {
+  const res = await fetch("/.netlify/functions/awesomo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: userText, history }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Chat function failed (${res.status}): ${errText}`);
+  }
+
+  const data = await res.json();
+  return data.reply || "Beep boop… I got nothing.";
 }
 
+// When popover opens, greet once
 popover?.addEventListener("beforetoggle", (event) => {
   if (event.newState === "open") {
     setTimeout(() => input?.focus(), 0);
@@ -94,12 +99,33 @@ popover?.addEventListener("beforetoggle", (event) => {
   }
 });
 
-form?.addEventListener("submit", (e) => {
+// Single submit handler
+form?.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const text = input.value.trim();
+
+  const text = input?.value?.trim();
   if (!text) return;
 
   addMsg("user", text);
+  history.push({ role: "user", content: text });
+
   input.value = "";
-  addMsg("bot", getReply());
+
+  const typingNode = addMsg("bot", "Beep boop… thinking.");
+
+  try {
+    const reply = await callAwesomo(text);
+
+    if (typingNode) typingNode.remove();
+    addMsg("bot", reply);
+
+    history.push({ role: "assistant", content: reply });
+
+    // cap history so it doesn’t grow forever
+    if (history.length > 24) history = history.slice(-24);
+  } catch (err) {
+    if (typingNode) typingNode.remove();
+    addMsg("bot", "Beep boop… my brain module is down. Try again.");
+    console.error(err);
+  }
 });
