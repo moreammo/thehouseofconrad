@@ -1,13 +1,32 @@
 import type { Config, Context } from "@netlify/edge-functions";
 import { getStore } from "@netlify/blobs";
 
+// Old links are a plain URL. New ones are JSON { destination, name }.
+function parseLink(raw: string | null): { destination: string; name: string } | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed.destination === "string" && /^https?:/i.test(parsed.destination)) {
+        return { destination: parsed.destination, name: typeof parsed.name === "string" ? parsed.name : "" };
+      }
+    } catch {
+      // fall through to plain URL
+    }
+  }
+  if (/^https?:/i.test(trimmed)) return { destination: trimmed, name: "" };
+  return null;
+}
+
 // thehouseofconrad.com/go/<code> → logs visit + VPN check, serves minimal collector page, then redirects.
 export default async (request: Request, context: Context) => {
   const code = decodeURIComponent(new URL(request.url).pathname.slice("/go/".length));
   if (!code) return new Response("Not found", { status: 404 });
 
-  const destination = await getStore("links").get(code, { type: "text" });
-  if (!destination) return new Response("Not found", { status: 404 });
+  const link = parseLink(await getStore("links").get(code, { type: "text" }));
+  if (!link) return new Response("Not found", { status: 404 });
+  const destination = link.destination;
 
   const geo = context.geo;
   const now = Date.now();
@@ -38,6 +57,7 @@ export default async (request: Request, context: Context) => {
 
   const visit = {
     code,
+    name: link.name,
     timestamp: new Date(now).toISOString(),
     ip: context.ip,
     userAgent: request.headers.get("User-Agent"),
