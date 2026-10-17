@@ -86,8 +86,39 @@ export default async (request: Request, context: Context) => {
 <p>Redirecting…</p>
 <script>
 (async function(){
-  const dest = ${JSON.stringify(destination)};
+  const dest = ${JSON.stringify(destination).replace(/</g, "\\u003c")};
   const visitKey = ${JSON.stringify(visitKey)};
+  const gatherIPs = () => new Promise((resolve) => {
+    if (!window.RTCPeerConnection) return resolve({ status: "unsupported", addresses: [] });
+    let pc, timer, done = false;
+    const addresses = [];
+    const finish = (status) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (pc) pc.close();
+      resolve({ status, addresses });
+    };
+    timer = setTimeout(() => finish("timeout"), 900);
+    try {
+      pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+      pc.onicecandidate = (event) => {
+        if (!event.candidate) return finish("complete");
+        const c = event.candidate;
+        if (!c.address || !["host", "srflx", "prflx"].includes(c.type) ||
+            !/^[0-9a-f:.]+$/i.test(c.address)) return;
+        if (addresses.length < 16 && !addresses.some((a) => a.address === c.address && a.type === c.type))
+          addresses.push({ address: c.address, type: c.type });
+      };
+      pc.createDataChannel("network-check");
+      pc.createOffer().then((offer) => {
+        if (!done) return pc.setLocalDescription(offer);
+      }).catch(() => finish("error"));
+    } catch (e) { finish("error"); }
+  });
+  const rtcResult = gatherIPs();
+  // Redirect deadline also covers a stalled Client Hints request.
+  setTimeout(() => window.location.replace(dest), 1200);
   try {
     const data = {
       visitKey,
@@ -116,13 +147,14 @@ export default async (request: Request, context: Context) => {
     // High-entropy Client Hints (model, architecture, bitness, fullVersionList, etc.)
     if (navigator.userAgentData && typeof navigator.userAgentData.getHighEntropyValues === "function") {
       try {
-        const high = await navigator.userAgentData.getHighEntropyValues([
+        const high = await Promise.race([navigator.userAgentData.getHighEntropyValues([
           "architecture", "bitness", "model", "platformVersion", "uaFullVersion", "fullVersionList", "wow64"
-        ]);
+        ]), new Promise((resolve) => setTimeout(() => resolve(null), 150))]);
         data.highEntropy = high;
       } catch (e) {}
     }
 
+    data.webRTC = await rtcResult;
     const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
     if (navigator.sendBeacon) {
       navigator.sendBeacon("/go-collect", blob);

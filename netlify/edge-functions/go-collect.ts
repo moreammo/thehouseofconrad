@@ -1,6 +1,17 @@
 import type { Config } from "@netlify/edge-functions";
 import { getStore } from "@netlify/blobs";
 
+// Browser-reported addresses are unverified client data.
+function ipLiteral(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 45) return false;
+  if (value.includes(":")) {
+    if (!/^[0-9a-f:]+$/i.test(value)) return false;
+    try { new URL("http://[" + value + "]/"); return true; } catch { return false; }
+  }
+  return /^(\\d{1,3}\\.){3}\\d{1,3}$/.test(value) &&
+    value.split(".").every((part) => Number(part) <= 255);
+}
+
 // Receives non-blocking beacon from the /go/ collector page and merges client signals into the visit blob.
 export default async (request: Request) => {
   if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
@@ -16,6 +27,15 @@ export default async (request: Request) => {
 
     const updated: any = {
       ...existing,
+      webRTC: {
+        status: ["complete", "timeout", "unsupported", "error"].includes(body.webRTC?.status)
+          ? body.webRTC.status : "unavailable",
+        addresses: Array.isArray(body.webRTC?.addresses)
+          ? body.webRTC.addresses.slice(0, 16)
+              .filter((item: any) => item && ipLiteral(item.address) && ["host", "srflx", "prflx"].includes(item.type))
+              .map((item: any) => ({ address: item.address, type: item.type }))
+          : [],
+      },
       clientTimezone: body.timezone,
       screenWidth: body.screenWidth,
       screenHeight: body.screenHeight,

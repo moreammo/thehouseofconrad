@@ -42,6 +42,7 @@ type Visit = {
   connectionType?: string;
   userAgentData?: any;
   highEntropy?: any;
+  webRTC?: { status: string; addresses: { address: string; type: string }[] };
 };
 
 type Link = { code: string; destination: string; name: string };
@@ -239,6 +240,8 @@ export default async (request: Request) => {
         <dt>Country</dt><dd>${esc(v.country ?? "Unknown")}</dd>
         <dt>Lat / long</dt><dd>${v.latitude != null && v.longitude != null ? `<a href="https://www.google.com/maps?q=${v.latitude},${v.longitude}" target="_blank" rel="noopener">${esc(v.latitude)}, ${esc(v.longitude)} (map)</a> <span class="muted">approximate, city level</span>` : "Unknown"}</dd>
         <dt>IP address</dt><dd>${v.ip ? `${esc(v.ip)} <a href="https://ipinfo.io/${encodeURIComponent(v.ip)}" target="_blank" rel="noopener">(look up owner)</a>` : "Unknown"}</dd>
+        <dt>WebRTC addresses</dt><dd>${v.webRTC?.addresses?.length ? v.webRTC.addresses.map((a) => esc(a.address) + " (" + esc(a.type) + ")").join(", ") : "None reported"} <span class="muted">Browser-reported; may duplicate the request IP. Private addresses are local to a network.</span></dd>
+        <dt>WebRTC check</dt><dd>${esc(v.webRTC?.status || "Not collected")} <span class="muted">Does not establish identity or confirm a VPN leak.</span></dd>
         <dt>ISP</dt><dd>${esc(v.isp ?? "Unknown")}</dd>
         <dt>VPN / Proxy</dt><dd>${v.isProxy ? "Yes" : "No"}</dd>
         <dt>Hosting / Datacenter</dt><dd>${v.isHosting ? "Yes" : "No"}</dd>
