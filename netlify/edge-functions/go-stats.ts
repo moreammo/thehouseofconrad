@@ -202,7 +202,7 @@ export default async (request: Request) => {
         .map(
           (row) => `<tr>
             <td>${esc(row.name || "—")}</td>
-            <td><a href="?code=${encodeURIComponent(row.code)}">${esc(row.code)}</a></td>
+            <td class="dest"><a href="${esc(`${url.origin}/go/${encodeURIComponent(row.code)}`)}" target="_blank" rel="noopener">${esc(`${url.origin}/go/${encodeURIComponent(row.code)}`)}</a><br><a href="?code=${encodeURIComponent(row.code)}">View stats</a></td>
             <td class="dest"><a href="${esc(row.destination)}" target="_blank" rel="noopener">${esc(row.destination)}</a></td>
             <td class="n">${filter && filter !== row.code ? "" : perCode.get(row.code) ?? 0}</td>
             <td><button type="button" class="copy" data-url="${esc(`${url.origin}/go/${row.code}`)}">Copy</button></td>
@@ -321,7 +321,7 @@ export default async (request: Request) => {
   <h1>Link Stats</h1>
   <p class="sub">thehouseofconrad.com/go/…</p>
   <p class="notice">This site logs visit and basic device information (including Client Hints) for link analytics.</p>
-  ${created ? `<section class="card new"><h2>Short link ready</h2><p><b>${esc(`${url.origin}/go/${created}`)}</b> <button type="button" class="copy" data-url="${esc(`${url.origin}/go/${created}`)}">Copy</button></p></section>` : ""}
+  ${created ? `<section class="card new"><h2>Your tracking link is ready</h2><p><a href="${esc(`${url.origin}/go/${encodeURIComponent(created)}`)}" target="_blank" rel="noopener">${esc(`${url.origin}/go/${encodeURIComponent(created)}`)}</a> <button type="button" class="copy" data-url="${esc(`${url.origin}/go/${created}`)}">Copy</button></p></section>` : ""}
   ${filter ? `<p class="filter">Showing <b>${esc(filter)}</b> only. <a href="/go-stats">Show all</a></p>` : ""}
   <p class="filter">${anonOnly ? `<a href="/go-stats">Show all visits</a>` : `<a href="?anon=1">Show VPN / hosting only</a>`}</p>
 
@@ -335,7 +335,7 @@ export default async (request: Request) => {
 
   <section class="card">
     <h2>Links</h2>
-    <table><tr><th>Link name</th><th>Code</th><th>Goes to</th><th class="n">Clicks</th><th></th></tr>${linksTable}</table>
+    <table><tr><th>Link name</th><th>Tracking link</th><th>Goes to</th><th class="n">Clicks</th><th></th></tr>${linksTable}</table>
   </section>
 
   <section class="card">
