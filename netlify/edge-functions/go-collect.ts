@@ -32,6 +32,7 @@ export default async (request: Request) => {
       platform: body.platform,
       connectionType: body.connectionType,
       userAgentData: body.userAgentData,
+      highEntropy: body.highEntropy || null,
     };
 
     // Timezone mismatch: client-reported vs IP-derived (or Netlify geo)
