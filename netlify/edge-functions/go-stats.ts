@@ -37,6 +37,12 @@ function authorized(request: Request, password: string, username?: string) {
   }
 }
 
+// No 0/O/1/l/I so codes read cleanly off a sign or a text.
+function randomCode() {
+  const chars = "abcdefghjkmnpqrstuvwxyz23456789";
+  return Array.from(crypto.getRandomValues(new Uint8Array(5)), (b) => chars[b % chars.length]).join("");
+}
+
 function device(ua?: string | null) {
   if (!ua) return "Unknown";
   if (/bot|crawl|spider|preview|facebookexternalhit|slack|discord/i.test(ua)) return "Bot / link preview";
@@ -86,23 +92,26 @@ export default async (request: Request) => {
     // Browsers resend Basic auth cross-site, so only accept posts from this page.
     if (request.headers.get("Origin") !== url.origin) return new Response("Bad origin", { status: 403 });
     const form = await request.formData();
-    const code = String(form.get("code") ?? "").trim();
+    let code = String(form.get("code") ?? "").trim();
     const destination = String(form.get("destination") ?? "").trim();
-    if (!/^[A-Za-z0-9_-]+$/.test(code)) return new Response("Code: letters, numbers, - and _ only", { status: 400 });
+    if (code && !/^[A-Za-z0-9_-]+$/.test(code)) return new Response("Code: letters, numbers, - and _ only", { status: 400 });
     if (form.get("delete")) {
-      await links.delete(code);
-    } else {
-      try {
-        if (!/^https?:$/.test(new URL(destination).protocol)) throw 0;
-      } catch {
-        return new Response("Destination must be a full http(s) URL", { status: 400 });
-      }
-      await links.set(code, destination);
+      if (code) await links.delete(code);
+      return Response.redirect(`${url.origin}/go-stats`, 303);
     }
-    return Response.redirect(`${url.origin}/go-stats`, 303);
+    try {
+      if (!/^https?:$/.test(new URL(destination).protocol)) throw 0;
+    } catch {
+      return new Response("Destination must be a full http(s) URL", { status: 400 });
+    }
+    // Blank code = make one up.
+    while (!code || (!form.get("code") && (await links.get(code)) !== null)) code = randomCode();
+    await links.set(code, destination);
+    return Response.redirect(`${url.origin}/go-stats?new=${encodeURIComponent(code)}`, 303);
   }
 
   const filter = url.searchParams.get("code") ?? "";
+  const created = url.searchParams.get("new") ?? "";
 
   const { blobs: linkKeys } = await links.list();
   const linkRows = await Promise.all(
@@ -188,10 +197,13 @@ export default async (request: Request) => {
   button.del{ border-color:var(--red); color:var(--red); }
   button.copy{ padding:4px 10px; font-size:12px; }
   .filter{ margin-bottom:12px; }
+  .new{ border-color:var(--neon); }
+  .new p{ margin:0; font-size:18px; overflow-wrap:anywhere; }
 </style></head>
 <body><main class="wrap">
   <h1>Link Stats</h1>
   <p class="sub">thehouseofconrad.com/go/…</p>
+  ${created ? `<section class="card new"><h2>Short link ready</h2><p><b>${esc(`${url.origin}/go/${created}`)}</b> <button type="button" class="copy" data-url="${esc(`${url.origin}/go/${created}`)}">Copy</button></p></section>` : ""}
   ${filter ? `<p class="filter">Showing <b>${esc(filter)}</b> only. <a href="/go-stats">Show all</a></p>` : ""}
 
   <div class="kpis">
@@ -208,11 +220,11 @@ export default async (request: Request) => {
   </section>
 
   <section class="card">
-    <h2>Add or change a link</h2>
+    <h2>Shorten a link</h2>
     <form method="post">
-      <input name="code" placeholder="code (e.g. register)" required pattern="[A-Za-z0-9_-]+">
-      <input name="destination" type="url" placeholder="https://full-destination-url">
-      <button type="submit">Save</button>
+      <input name="destination" type="url" placeholder="Paste the long URL here">
+      <input name="code" placeholder="Custom code (optional, blank = random)" pattern="[A-Za-z0-9_-]+">
+      <button type="submit">Shorten</button>
       <button type="submit" name="delete" value="1" class="del" formnovalidate>Delete code</button>
     </form>
   </section>
