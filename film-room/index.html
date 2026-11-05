@@ -530,7 +530,7 @@ function playTags(p) {
   return bits.map(([k, v]) => `<span><b>${esc(k)}</b> ${esc(v)}</span>`).join('');
 }
 function reportHtml() {
-  const ps = R.plays, noOv = s => s.replace(' id="ov"', '');
+  const ps = R.plays;
   const forms = new Map(); for (const q of ps) if (q.side === 'O' && q.formation && q.marks?.length) forms.set(q.formation, q);
   const t = tendencies(ps).offense.byFormation;
   return `<section class="pr-cover"><h1>Scouting report: ${esc(R.opponent)}</h1>
@@ -539,21 +539,26 @@ function reportHtml() {
     + `<section>${tendHtml()}</section>`
     + (forms.size ? `<section class="pr-break"><h2>Formations</h2><div class="pr-forms">${[...forms.values()].map(q => { const r = t.find(x => x.key === q.formation) || {};
         return `<div class="pr-form"><b>${esc(q.formation)}</b> <span class="pr-dim">${r.n || 0} plays · ${r.runPct ?? '-'}% run · ${r.passPct ?? '-'}% pass${r.top ? ' · top: ' + esc(r.top) : ''}</span><svg viewBox="${frame(q).join(' ')}">${diagram(q, false, frame(q))}</svg></div>`; }).join('')}</div></section>` : '')
-    + `<section class="pr-break"><h2>Every play</h2>${ps.map(p => `<div class="pr-play"><h3>#${num(p)} ${p.side === 'O' ? 'Their offense' : 'Their defense'}${p.name ? ': ' + esc(p.name) : ''}${call(p) ? ' · ' + esc(call(p)) : ''}</h3>
-      <div class="pr-pics">${p.shot && shotUrls[p.shot] ? `<svg viewBox="0 0 1000 600">${noOv(diagram(p, true))}</svg>` : ''}${p.marks?.length || p.lines?.length ? `<svg viewBox="${frame(p).join(' ')}">${diagram(p, false, frame(p))}</svg>` : ''}</div>
-      <div class="pr-tags">${playTags(p)}</div>${p.notes ? `<p class="pr-notes"><b>Notes:</b> ${esc(p.notes)}</p>` : ''}</div>`).join('')}</section>`;
+    + `<section class="pr-break"><h2>Every play</h2>${ps.map(playHtml).join('')}</section>`;
 }
-async function printReport() {
-  if (!R?.plays.length) return alert('Mark some plays first.');
+function playHtml(p) {
+  return `<div class="pr-play"><h3>#${num(p)} ${p.side === 'O' ? 'Their offense' : 'Their defense'}${p.name ? ': ' + esc(p.name) : ''}${call(p) ? ' · ' + esc(call(p)) : ''}</h3>
+    <div class="pr-pics">${p.shot && shotUrls[p.shot] ? `<svg viewBox="0 0 1000 600">${diagram(p, true).replace(' id="ov"', '')}</svg>` : ''}${p.marks?.length || p.lines?.length ? `<svg viewBox="${frame(p).join(' ')}">${diagram(p, false, frame(p))}</svg>` : ''}</div>
+    <div class="pr-tags">${playTags(p)}</div>${p.notes ? `<p class="pr-notes"><b>Notes:</b> ${esc(p.notes)}</p>` : ''}</div>`;
+}
+const bookHtml = ps => `<section class="pr-cover"><h1>Playbook: ${esc(R.opponent)}</h1><p>${ps.length} plays</p><p class="pr-dim">Printed ${new Date().toLocaleDateString()}</p></section>` + ps.map(playHtml).join('');
+async function printReport(book) {
+  const ps = book ? (R?.plays || []).filter(p => p.inBook) : R?.plays || [];
+  if (!ps.length) return alert(book ? 'Check "Add to playbook" on some plays first.' : 'Mark some plays first.');
   await flush(); await loadShots();
-  $('print').innerHTML = reportHtml();
+  $('print').innerHTML = book ? bookHtml(ps) : reportHtml();
   await wait(400); // ponytail: lets the screenshot images paint before the print dialog grabs the page
   print();
 }
 addEventListener('afterprint', () => { $('print').innerHTML = ''; });
 function renderBook() {
   const ps = (R?.plays || []).filter(p => p.inBook);
-  $('book').innerHTML = ps.length ? `<div class="cards">${ps.map(p => `<div class="card" data-id="${esc(p.id)}"><b>${esc(p.name || p.concept || p.front || 'Play ' + num(p))}</b>
+  $('book').innerHTML = ps.length ? `<div class="row"><button id="printBook">Print playbook</button><span class="hint">${ps.length} plays, with screenshots, diagrams, tags and notes. Save as PDF from the print screen.</span></div><div class="cards">${ps.map(p => `<div class="card" data-id="${esc(p.id)}"><b>${esc(p.name || p.concept || p.front || 'Play ' + num(p))}</b>
     <svg viewBox="${frame(p).join(' ')}">${diagram(p, false, frame(p))}</svg><p>${p.side === 'O' ? 'Offense' : 'Defense'}${p.formation ? ' · ' + esc(p.formation) : ''}${call(p) ? ' · ' + esc(call(p)) : ''}</p><p>${esc(p.notes)}</p></div>`).join('')}</div>`
     : '<div class="empty">Check "Add to playbook" on a play and it shows up here.</div>';
 }
@@ -568,7 +573,7 @@ function selectPlay(id, jump) { sel = id; moveSel = null; const p = P(); renderA
 /* ---------- wiring ---------- */
 $('newReport').onclick = newReport;
 $('export').onclick = exportReport;
-$('printBtn').onclick = printReport;
+$('printBtn').onclick = () => printReport(false);
 $('report').onchange = async e => { await flush(); if (e.target.value) loadReport(e.target.value); };
 $('addFilm').onclick = addFilm;
 $('film').onchange = e => loadFilm(e.target.value);
@@ -578,7 +583,7 @@ $('mark').onclick = markPlay;
 document.querySelectorAll('[data-seek]').forEach(b => b.onclick = () => seek(now() + +b.dataset.seek));
 $('plays').onclick = e => { const tr = e.target.closest('tr'); if (tr) selectPlay(tr.dataset.id, true); };
 $('tabs').onclick = e => { if (e.target.dataset.t) setTab(e.target.dataset.t); };
-$('book').onclick = e => { const c = e.target.closest('.card'); if (c) { setTab('chart'); selectPlay(c.dataset.id, true); } };
+$('book').onclick = e => { if (e.target.id === 'printBook') return printReport(true); const c = e.target.closest('.card'); if (c) { setTab('chart'); selectPlay(c.dataset.id, true); } };
 $('delPlay').onclick = () => { const p = P(); if (p && confirm(`Delete play ${num(p)}?`)) { R.plays.splice(R.plays.indexOf(p), 1); sel = R.plays.at(-1)?.id || null; touch(); renderAll(); } };
 addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !/INPUT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); return undo(); }
