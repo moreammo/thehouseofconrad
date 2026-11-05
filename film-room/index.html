@@ -247,11 +247,21 @@ let tool = 'move', undoStack = [], drag = null;
 $('tools').innerHTML = TOOLS.map(([k, n]) => `<button data-tool="${k}" class="${k === tool ? 'on' : ''}">${n}</button>`).join('');
 $('tools').onclick = e => { const t = e.target.dataset.tool; if (t) { tool = t; [...$('tools').children].forEach(b => b.classList.toggle('on', b.dataset.tool === t)); } };
 const LINE = { route: '#f2c230', block: '#ffffff', motion: '#7fd6ff' };
-function fieldLines() {
+/* chalkboard view zooms out to fit everything on the play (never zooms in past the normal field) */
+function frame(p) {
+  let x0 = 0, y0 = 0, x1 = 1000, y1 = 600;
+  const add = (x, y, r) => { x0 = Math.min(x0, x - r); y0 = Math.min(y0, y - r); x1 = Math.max(x1, x + r); y1 = Math.max(y1, y + r); };
+  for (const m of p.marks || []) add(m.x, m.y, 50); // room for ring, football and label
+  for (const l of p.lines || []) for (const [x, y] of l.pts) add(x, y, 25);
+  let w = x1 - x0, h = y1 - y0;
+  if (w / h > 5 / 3) { const d = w * 3 / 5 - h; y0 -= d / 2; h += d; } else { const d = h * 5 / 3 - w; x0 -= d / 2; w += d; }
+  return [x0, y0, w, h].map(Math.round);
+}
+function fieldLines([vx, vy, vw, vh] = [0, 0, 1000, 600]) {
   let s = '';
-  for (let i = -3; i <= 4; i++) { const y = LOS + i * 5 * YD; if (y > 0 && y < 600) s += `<line x1="0" x2="1000" y1="${y}" y2="${y}" stroke="#fff" stroke-opacity=".22"/>`; }
-  for (let y = LOS % YD; y < 600; y += YD) for (const x of [0, 333, 667, 992]) s += `<line x1="${x}" x2="${x + 8}" y1="${y}" y2="${y}" stroke="#fff" stroke-opacity=".3"/>`;
-  return s + `<line x1="0" x2="1000" y1="${LOS}" y2="${LOS}" stroke="#f2c230" stroke-width="2" stroke-opacity=".7"/>`;
+  for (let i = Math.ceil((vy - LOS) / (5 * YD)); LOS + i * 5 * YD < vy + vh; i++) { const y = LOS + i * 5 * YD; s += `<line x1="${vx}" x2="${vx + vw}" y1="${y}" y2="${y}" stroke="#fff" stroke-opacity=".22"/>`; }
+  for (let y = LOS - Math.floor((LOS - vy) / YD) * YD; y < vy + vh; y += YD) for (const x of [0, 333, 667, 992]) s += `<line x1="${x}" x2="${x + 8}" y1="${y}" y2="${y}" stroke="#fff" stroke-opacity=".3"/>`;
+  return s + `<line x1="${vx}" x2="${vx + vw}" y1="${LOS}" y2="${LOS}" stroke="#f2c230" stroke-width="2" stroke-opacity=".7"/>`;
 }
 function lineSvg(l) {
   const pts = l.pts, c = LINE[l.k]; if (pts.length < 2) return '';
@@ -273,14 +283,20 @@ function markSvg(m, rot = 0) {
 /* fit: per play rotate/size/tilt/slide of the drawing, only applied over the screenshot; playbook cards stay top down */
 const OV0 = { rot: 0, sc: 1, tilt: 1, dx: 0, dy: 0 };
 const ovT = o => `translate(${500 + o.dx} ${LOS + o.dy}) scale(${o.sc} ${o.sc * o.tilt}) rotate(${o.rot}) translate(-500 -${LOS})`;
-const diagram = (p, shot) => {
+const diagram = (p, shot, vb) => {
   const on = shot && shotUrls[p.shot], rot = on ? p.ov?.rot || 0 : 0;
   const art = (p.lines || []).map(lineSvg).join('') + (p.marks || []).map(m => markSvg(m, rot)).join('');
   return on
     ? `<image href="${esc(shotUrls[p.shot])}" width="1000" height="600" preserveAspectRatio="xMidYMid meet" opacity=".8"/><g id="ov" transform="${ovT({ ...OV0, ...p.ov })}">${art}</g>`
-    : fieldLines() + art;
+    : fieldLines(vb) + art;
 };
-function renderField() { const p = P(); if (p) $('field').innerHTML = diagram(p, $('showShot').checked); }
+let fieldVb = [0, 0, 1000, 600];
+function renderField() {
+  const p = P(); if (!p) return; const shot = $('showShot').checked && shotUrls[p.shot];
+  if (!drag) fieldVb = shot ? [0, 0, 1000, 600] : frame(p); // hold the zoom still mid-drag
+  $('field').setAttribute('viewBox', fieldVb.join(' '));
+  $('field').innerHTML = diagram(p, $('showShot').checked, fieldVb);
+}
 function pt(e, el = $('ov') || $('field')) { const q = new DOMPoint(e.clientX, e.clientY).matrixTransform(el.getScreenCTM().inverse()); return [Math.round(q.x), Math.round(q.y)]; }
 const nearMark = (p, [x, y], r = 30) => p.marks.findLast(m => Math.hypot(m.x - x, m.y - y) < r);
 function snap() { const p = P(); undoStack.push(JSON.stringify({ id: p.id, marks: p.marks, lines: p.lines, ov: p.ov })); if (undoStack.length > 60) undoStack.shift(); }
@@ -486,7 +502,7 @@ function renderTend() {
 function renderBook() {
   const ps = (R?.plays || []).filter(p => p.inBook);
   $('book').innerHTML = ps.length ? `<div class="cards">${ps.map(p => `<div class="card" data-id="${esc(p.id)}"><b>${esc(p.name || p.concept || p.front || 'Play ' + num(p))}</b>
-    <svg viewBox="0 0 1000 600">${diagram(p, false)}</svg><p>${p.side === 'O' ? 'Offense' : 'Defense'}${p.formation ? ' · ' + esc(p.formation) : ''}${call(p) ? ' · ' + esc(call(p)) : ''}</p><p>${esc(p.notes)}</p></div>`).join('')}</div>`
+    <svg viewBox="${frame(p).join(' ')}">${diagram(p, false, frame(p))}</svg><p>${p.side === 'O' ? 'Offense' : 'Defense'}${p.formation ? ' · ' + esc(p.formation) : ''}${call(p) ? ' · ' + esc(call(p)) : ''}</p><p>${esc(p.notes)}</p></div>`).join('')}</div>`
     : '<div class="empty">Check "Add to playbook" on a play and it shows up here.</div>';
 }
 function setTab(t) {
