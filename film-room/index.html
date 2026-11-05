@@ -70,7 +70,7 @@ th{color:var(--dim);font-weight:500;position:sticky;top:0;background:var(--bg)}
       <button id="snap">Snap frame</button><button id="snapAll">Snap all</button><label class="fileBtn">Add screenshot<input type="file" id="shotFile" accept="image/*" hidden></label><label class="hint"><input type="checkbox" id="showShot" checked> Show it</label>
     </div>
     <svg id="field" viewBox="0 0 1000 600" role="img" aria-label="Formation diagram"></svg>
-    <p class="hint">Uploaded video: Mark play grabs the frame on screen automatically. Snap frame grabs it again if you move the video. YouTube: take a screenshot and tap Add screenshot (on a PC, Win+Shift+S then Ctrl+V). Shells give you 11 to drag into place.</p>
+    <p class="hint">Uploaded video: Mark play grabs the frame on screen automatically. Snap frame grabs it again if you move the video. YouTube on a computer (Chrome or Edge): the first snap asks to share this tab, pick it and every snap after is automatic. iPad with YouTube: take a screenshot and tap Add screenshot. Shells give you 11 to drag into place.</p>
     <div id="form" class="grid"></div>
     <div class="row" style="margin-top:8px"><button id="delPlay">Delete play</button></div>
   </section>
@@ -200,7 +200,7 @@ function markPlay() {
   const p = { id: uid(), film: film?.id || '', t: Math.floor(now()), side: prev?.side || 'O', marks: [], lines: [] };
   R.plays.push(p); R.plays.sort((a, b) => (a.film === b.film ? a.t - b.t : 0));
   sel = p.id; touch(); renderAll();
-  if (film?.local && vid.readyState >= 2) addShot(vid); // auto snap the pre-snap frame
+  snapFrame(p, !tabDenied); // auto snap the pre-snap frame
 }
 const num = p => R.plays.indexOf(p) + 1;
 const call = p => p.side === 'O' ? [p.ptype, p.concept, p.dir].filter(Boolean).join(' ') : [p.front, p.coverage, p.blitz && p.blitz !== 'None' ? 'blitz' : ''].filter(Boolean).join(' / ');
@@ -339,20 +339,49 @@ document.addEventListener('paste', e => {
   const item = [...e.clipboardData.items].find(i => i.type.startsWith('image/'));
   if (item) { e.preventDefault(); addShot(item.getAsFile()); }
 });
-$('snap').onclick = () => {
-  if (!film?.local) return alert('Snapping only works on uploaded videos. YouTube blocks it. Download the game film and use Upload video, or take a screenshot and use Add screenshot.');
-  if (vid.readyState < 2) return alert('Video is not loaded yet.');
-  addShot(vid);
-};
+/* YouTube blocks reading its pixels, so on Chrome/Edge desktop we capture this tab and crop to the player.
+   ponytail: iPad/iPhone Safari has no tab capture; those still need Upload video or a manual screenshot. */
+const wait = ms => new Promise(r => setTimeout(r, ms));
+let tabStream = null, tabVid = null, tabDenied = false;
+async function tabFrame(ask) {
+  if (tabStream?.getVideoTracks()[0]?.readyState !== 'live') {
+    if (!ask) return null;
+    if (!navigator.mediaDevices?.getDisplayMedia) { alert('This browser cannot grab YouTube frames (iPad and iPhone cannot). Use Chrome or Edge on a computer, upload the video file, or take a screenshot and use Add screenshot.'); return null; }
+    try {
+      tabStream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: 'browser', frameRate: 10 }, audio: false, preferCurrentTab: true, selfBrowserSurface: 'include', surfaceSwitching: 'exclude' });
+    } catch { tabDenied = true; status('Frame grab is off. Tap Snap frame to turn it on.'); return null; }
+    tabDenied = false;
+    const track = tabStream.getVideoTracks()[0];
+    tabStream.cropped = false;
+    if (window.CropTarget && track.cropTo) try { await track.cropTo(await CropTarget.fromElement($('yt-wrap'))); tabStream.cropped = true; } catch {}
+    tabVid = document.createElement('video'); tabVid.muted = true; tabVid.srcObject = tabStream; await tabVid.play();
+    await wait(500);
+  }
+  await wait(350); // ponytail: lets the paused frame paint and the share bar settle; raise if snaps look stale
+  const w = tabVid.videoWidth, h = tabVid.videoHeight, c = document.createElement('canvas');
+  let sx = 0, sy = 0, sw = w, sh = h;
+  if (!tabStream.cropped) { const b = $('yt-wrap').getBoundingClientRect(), k = w / innerWidth; [sx, sy, sw, sh] = [b.x * k, b.y * k, b.width * k, b.height * k]; }
+  c.width = sw; c.height = sh; c.getContext('2d').drawImage(tabVid, sx, sy, sw, sh, 0, 0, sw, sh);
+  return c;
+}
+async function snapFrame(p, ask) {
+  if (film?.local) { if (vid.readyState < 2) return false; await addShot(vid, p); return true; }
+  if (!film) return false;
+  const c = await tabFrame(ask); if (!c) return false;
+  await addShot(c, p); return true;
+}
+$('snap').onclick = () => { if (!P()) return alert('Mark a play first.'); snapFrame(P(), true); };
 $('snapAll').onclick = async () => {
-  if (!film?.local || vid.readyState < 1) return alert('Snap all only works on uploaded videos. Pick an uploaded game in the film list first.');
+  if (!film) return alert('Pick a game in the film list first.');
   const todo = R.plays.filter(p => p.film === film.id && !p.shot);
   if (!todo.length) return alert('Every play on this film already has a screenshot.');
-  vid.pause();
+  if (!film.local && !await tabFrame(true)) return; // ask for tab capture up front, inside the tap
+  vid.pause(); try { yt?.pauseVideo?.(); } catch {}
   for (const [i, p] of todo.entries()) {
     status(`Snapping ${i + 1} of ${todo.length}...`);
-    await new Promise(ok => { vid.addEventListener('seeked', ok, { once: true }); vid.currentTime = p.t; });
-    await addShot(vid, p);
+    if (film.local) await new Promise(ok => { vid.addEventListener('seeked', ok, { once: true }); vid.currentTime = p.t; });
+    else { seek(p.t); await wait(1500); } // ponytail: fixed wait for YouTube to buffer the seek; raise on slow connections
+    if (!await snapFrame(p, false)) { status('Snap all stopped. Tap Snap all to continue.', true); return; }
   }
   renderField(); status(`Snapped ${todo.length} plays`);
 };
