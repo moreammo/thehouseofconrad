@@ -66,12 +66,13 @@ th{color:var(--dim);font-weight:500;position:sticky;top:0;background:var(--bg)}
     <div class="row">
       <select id="presetO" aria-label="Offense shell"><option value="">Offense shell</option></select>
       <select id="presetD" aria-label="Defense shell"><option value="">Defense shell</option></select>
+      <select id="reuse" aria-label="Reuse a saved look" style="max-width:220px"></select>
       <button id="flip">Flip</button><button id="undo">Undo</button><button id="copyPrev">Copy previous</button><button id="clearD">Clear</button>
       <button id="snap">Snap frame</button><button id="snapAll">Snap all</button><label class="fileBtn">Add screenshot<input type="file" id="shotFile" accept="image/*" hidden></label><label class="hint"><input type="checkbox" id="showShot" checked> Show it</label>
     </div>
     <div class="row" id="fit"><span class="hint">Fit drawing to video:</span><button data-fit="rot,-5" title="Rotate left">⟲</button><button data-fit="rot,5" title="Rotate right">⟳</button><button data-fit="sc,.92">Smaller</button><button data-fit="sc,1.08">Bigger</button><button data-fit="tilt,.92">Flatter</button><button data-fit="tilt,1.08">Taller</button><button id="fitReset">Reset fit</button></div>
     <svg id="field" viewBox="0 0 1000 600" role="img" aria-label="Formation diagram"></svg>
-    <p class="hint">Uploaded video: Mark play grabs the frame on screen automatically. Snap frame grabs it again if you move the video. YouTube on a computer (Chrome or Edge): the first snap asks to share this tab, pick it and every snap after is automatic. iPad with YouTube: take a screenshot and tap Add screenshot. Shells give you 11 to drag into place. Fit buttons turn and size the whole drawing to match the camera angle, and with Move you drag empty space to slide it all (drag a player to move just them and their route); new plays start with the last play's fit.</p>
+    <p class="hint">Uploaded video: Mark play grabs the frame on screen automatically. Snap frame grabs it again if you move the video. YouTube on a computer (Chrome or Edge): the first snap asks to share this tab, pick it and every snap after is automatic. iPad with YouTube: take a screenshot and tap Add screenshot. Shells give you 11 to drag into place. Reuse pulls a formation you already drew on this opponent, jersey numbers included, or a whole earlier play. Fit buttons turn and size the whole drawing to match the camera angle, and with Move you drag empty space to slide it all (drag a player to move just them and their route); new plays start with the last play's fit.</p>
     <div id="form" class="grid"></div>
     <div class="row" style="margin-top:8px"><button id="delPlay">Delete play</button></div>
   </section>
@@ -230,6 +231,7 @@ function renderForm() {
     + [...FIELDS.common, ...FIELDS[p.side], ...FIELDS.end].map(field).join('')
     + `<div class="wide"><label style="flex-direction:row;align-items:center;gap:6px;font-size:14px;color:var(--fg)"><input type="checkbox" id="f-inBook" data-k="inBook" style="width:auto" ${p.inBook ? 'checked' : ''}> Add to playbook</label></div>`
     + `<label class="wide">Playbook name<input id="f-name" data-k="name" value="${esc(p.name)}"></label><label class="wide">Notes<textarea id="f-notes" data-k="notes">${esc(p.notes)}</textarea></label>`;
+  renderReuse();
   for (const k in DEFAULTS) $('dl-' + k).innerHTML = opt(...new Set([...R.plays.map(x => x[k]).filter(Boolean), ...DEFAULTS[k]]));
 }
 $('form').addEventListener('input', e => {
@@ -338,6 +340,25 @@ $('undo').onclick = undo;
 $('clearD').onclick = () => { const p = P(); if (!p) return; snap(); p.marks = []; p.lines = []; touch(); renderField(); };
 $('copyPrev').onclick = () => { const p = P(), i = R?.plays.indexOf(p); if (!i) return; const q = R.plays[i - 1]; snap(); p.marks = structuredClone(q.marks); p.lines = structuredClone(q.lines); p.ov = q.ov && { ...q.ov }; p.formation ||= q.formation; p.front ||= q.front; touch(); renderForm(); renderField(); };
 $('showShot').onchange = renderField;
+
+/* reuse: formations/fronts already drawn on this opponent (their players only, numbers kept), or any whole earlier play */
+const look = q => q.side === 'O' ? q.formation : q.front;
+function renderReuse() {
+  const p = P(), src = R.plays.filter(q => q !== p && q.marks?.length), forms = new Map();
+  for (const q of src) if (look(q)) forms.set(q.side + '|' + look(q), q); // last one drawn wins
+  const o = (v, t) => `<option value="${esc(v)}">${esc(t)}</option>`;
+  $('reuse').innerHTML = o('', 'Reuse...')
+    + (forms.size ? `<optgroup label="Formations (their players)">${[...forms.values()].sort((a, b) => look(a).localeCompare(look(b))).map(q => o('f:' + q.id, (q.side === 'O' ? 'Off: ' : 'Def: ') + look(q))).join('')}</optgroup>` : '')
+    + (src.length ? `<optgroup label="Whole play">${src.map(q => o('p:' + q.id, `#${num(q)} ` + (q.name || (q.side === 'O' ? [q.formation, call(q)] : [call(q)]).filter(Boolean).join(' ') || fmtT(q.t)))).join('')}</optgroup>` : '');
+}
+$('reuse').onchange = e => {
+  const p = P(), [k, id] = e.target.value.split(':'), q = R.plays.find(x => x.id === id); e.target.value = ''; if (!p || !q) return;
+  snap();
+  if (k === 'p') { p.marks = structuredClone(q.marks); p.lines = structuredClone(q.lines); }
+  else { const t = q.side === 'O' ? 'O' : 'X'; p.marks = p.marks.filter(m => m.t !== t).concat(structuredClone(q.marks.filter(m => m.t === t))); }
+  if (q.side === p.side) { if (q.side === 'O') p.formation ||= q.formation; else p.front ||= q.front; }
+  touch(); renderForm(); renderField(); renderStrip();
+};
 $('fit').onclick = e => {
   const p = P(), [k, v] = (e.target.dataset.fit || '').split(','); if (!p || !k) return;
   if (!$('ov')) return alert('Fit only applies over a screenshot. Snap or add one first.');
