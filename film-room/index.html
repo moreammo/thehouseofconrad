@@ -69,8 +69,9 @@ th{color:var(--dim);font-weight:500;position:sticky;top:0;background:var(--bg)}
       <button id="flip">Flip</button><button id="undo">Undo</button><button id="copyPrev">Copy previous</button><button id="clearD">Clear</button>
       <button id="snap">Snap frame</button><button id="snapAll">Snap all</button><label class="fileBtn">Add screenshot<input type="file" id="shotFile" accept="image/*" hidden></label><label class="hint"><input type="checkbox" id="showShot" checked> Show it</label>
     </div>
+    <div class="row" id="fit"><span class="hint">Fit drawing to video:</span><button data-fit="rot,-5" title="Rotate left">⟲</button><button data-fit="rot,5" title="Rotate right">⟳</button><button data-fit="sc,.92">Smaller</button><button data-fit="sc,1.08">Bigger</button><button data-fit="tilt,.92">Flatter</button><button data-fit="tilt,1.08">Taller</button><button id="fitReset">Reset fit</button></div>
     <svg id="field" viewBox="0 0 1000 600" role="img" aria-label="Formation diagram"></svg>
-    <p class="hint">Uploaded video: Mark play grabs the frame on screen automatically. Snap frame grabs it again if you move the video. YouTube on a computer (Chrome or Edge): the first snap asks to share this tab, pick it and every snap after is automatic. iPad with YouTube: take a screenshot and tap Add screenshot. Shells give you 11 to drag into place.</p>
+    <p class="hint">Uploaded video: Mark play grabs the frame on screen automatically. Snap frame grabs it again if you move the video. YouTube on a computer (Chrome or Edge): the first snap asks to share this tab, pick it and every snap after is automatic. iPad with YouTube: take a screenshot and tap Add screenshot. Shells give you 11 to drag into place. Fit buttons and Slide all turn and size the whole drawing to match the camera angle; new plays start with the last play's fit.</p>
     <div id="form" class="grid"></div>
     <div class="row" style="margin-top:8px"><button id="delPlay">Delete play</button></div>
   </section>
@@ -197,7 +198,7 @@ function markPlay() {
   if (!R) return alert('Create an opponent first.');
   const prev = R.plays.at(-1);
   vid.pause(); try { yt?.pauseVideo?.(); } catch {}
-  const p = { id: uid(), film: film?.id || '', t: Math.floor(now()), side: prev?.side || 'O', marks: [], lines: [] };
+  const p = { id: uid(), film: film?.id || '', t: Math.floor(now()), side: prev?.side || 'O', marks: [], lines: [], ov: prev?.ov && { ...prev.ov } }; // same camera angle as last play
   R.plays.push(p); R.plays.sort((a, b) => (a.film === b.film ? a.t - b.t : 0));
   sel = p.id; touch(); renderAll();
   snapFrame(p, !tabDenied); // auto snap the pre-snap frame
@@ -239,7 +240,7 @@ $('form').addEventListener('input', e => {
 $('form').addEventListener('click', e => { const s = e.target.dataset.side; if (s && P()) { e.preventDefault(); P().side = s; touch(); renderForm(); renderStrip(); } });
 
 /* ---------- diagram ---------- */
-const YD = 18.75, LOS = 375, TOOLS = [['move','Move'],['O','O'],['X','X'],['route','Route'],['block','Block'],['motion','Motion'],['erase','Erase']];
+const YD = 18.75, LOS = 375, TOOLS = [['move','Move'],['O','O'],['X','X'],['route','Route'],['block','Block'],['motion','Motion'],['erase','Erase'],['slide','Slide all']];
 let tool = 'move', undoStack = [], drag = null;
 $('tools').innerHTML = TOOLS.map(([k, n]) => `<button data-tool="${k}" class="${k === tool ? 'on' : ''}">${n}</button>`).join('');
 $('tools').onclick = e => { const t = e.target.dataset.tool; if (t) { tool = t; [...$('tools').children].forEach(b => b.classList.toggle('on', b.dataset.tool === t)); } };
@@ -264,14 +265,22 @@ function markSvg(m) {
     ? `<circle cx="${m.x}" cy="${m.y}" r="20" fill="#fff"/><text x="${m.x}" y="${m.y + 6}" text-anchor="middle" font-size="17" font-weight="700" fill="#102">${l}</text>`
     : `<g stroke="#f2c230" stroke-width="5" stroke-linecap="round"><line x1="${m.x - 15}" y1="${m.y - 15}" x2="${m.x + 15}" y2="${m.y + 15}"/><line x1="${m.x + 15}" y1="${m.y - 15}" x2="${m.x - 15}" y2="${m.y + 15}"/></g><text x="${m.x}" y="${m.y - 21}" text-anchor="middle" font-size="17" font-weight="700" fill="#f2c230">${l}</text>`;
 }
-const diagram = (p, shot) => (shot && shotUrls[p.shot] ? `<image href="${esc(shotUrls[p.shot])}" width="1000" height="600" preserveAspectRatio="xMidYMid meet" opacity=".8"/>` : fieldLines())
-  + (p.lines || []).map(lineSvg).join('') + (p.marks || []).map(markSvg).join('');
+/* fit: per play rotate/size/tilt/slide of the drawing, only applied over the screenshot; playbook cards stay top down */
+const OV0 = { rot: 0, sc: 1, tilt: 1, dx: 0, dy: 0 };
+const ovT = o => `translate(${500 + o.dx} ${LOS + o.dy}) scale(${o.sc} ${o.sc * o.tilt}) rotate(${o.rot}) translate(-500 -${LOS})`;
+const diagram = (p, shot) => {
+  const art = (p.lines || []).map(lineSvg).join('') + (p.marks || []).map(markSvg).join('');
+  return shot && shotUrls[p.shot]
+    ? `<image href="${esc(shotUrls[p.shot])}" width="1000" height="600" preserveAspectRatio="xMidYMid meet" opacity=".8"/><g id="ov" transform="${ovT({ ...OV0, ...p.ov })}">${art}</g>`
+    : fieldLines() + art;
+};
 function renderField() { const p = P(); if (p) $('field').innerHTML = diagram(p, $('showShot').checked); }
-function pt(e) { const q = new DOMPoint(e.clientX, e.clientY).matrixTransform($('field').getScreenCTM().inverse()); return [Math.round(q.x), Math.round(q.y)]; }
+function pt(e, el = $('ov') || $('field')) { const q = new DOMPoint(e.clientX, e.clientY).matrixTransform(el.getScreenCTM().inverse()); return [Math.round(q.x), Math.round(q.y)]; }
 const nearMark = (p, [x, y], r = 30) => p.marks.findLast(m => Math.hypot(m.x - x, m.y - y) < r);
-function snap() { const p = P(); undoStack.push(JSON.stringify({ id: p.id, marks: p.marks, lines: p.lines })); if (undoStack.length > 60) undoStack.shift(); }
+function snap() { const p = P(); undoStack.push(JSON.stringify({ id: p.id, marks: p.marks, lines: p.lines, ov: p.ov })); if (undoStack.length > 60) undoStack.shift(); }
 $('field').addEventListener('pointerdown', e => {
   const p = P(); if (!p) return; const q = pt(e); $('field').setPointerCapture(e.pointerId);
+  if (tool === 'slide') { if (!$('ov')) return; snap(); const o = p.ov = { ...OV0, ...p.ov }; drag = { o, start: pt(e, $('field')), dx: o.dx, dy: o.dy }; return; }
   if (tool === 'move') { const m = nearMark(p, q); if (m) { snap(); drag = { m }; $('label').value = m.l || ''; drag.sel = m; moveSel = m; } }
   else if (tool === 'O' || tool === 'X') { snap(); const m = { t: tool, x: q[0], y: q[1], l: $('label').value.trim() }; p.marks.push(m); $('label').value = ''; moveSel = m; touch(); }
   else if (tool === 'erase') {
@@ -285,7 +294,8 @@ $('field').addEventListener('pointerdown', e => {
 let moveSel = null;
 $('field').addEventListener('pointermove', e => {
   if (!drag) return; const q = pt(e);
-  if (drag.m) { drag.m.x = q[0]; drag.m.y = q[1]; }
+  if (drag.o) { const f = pt(e, $('field')); drag.o.dx = drag.dx + f[0] - drag.start[0]; drag.o.dy = drag.dy + f[1] - drag.start[1]; }
+  else if (drag.m) { drag.m.x = q[0]; drag.m.y = q[1]; }
   else { const a = drag.l.pts.at(-1); if (Math.hypot(a[0] - q[0], a[1] - q[1]) > 12) drag.l.pts.push(q); }
   renderField();
 });
@@ -295,7 +305,7 @@ $('field').addEventListener('pointerup', () => {
   drag = null; touch(); renderField();
 });
 $('label').addEventListener('input', () => { if (moveSel && P()?.marks.includes(moveSel)) { moveSel.l = $('label').value; touch(); renderField(); } });
-function undo() { const s = undoStack.pop(); if (!s) return; const u = JSON.parse(s), p = R.plays.find(x => x.id === u.id); if (p) { sel = p.id; p.marks = u.marks; p.lines = u.lines; touch(); renderAll(); } }
+function undo() { const s = undoStack.pop(); if (!s) return; const u = JSON.parse(s), p = R.plays.find(x => x.id === u.id); if (p) { sel = p.id; p.marks = u.marks; p.lines = u.lines; p.ov = u.ov; touch(); renderAll(); } }
 
 const OL = [[400,'T'],[450,'G'],[500,'C'],[550,'G'],[600,'T']].map(([x, l]) => [x, 400, l]);
 const DY = 350, LB = 275;
@@ -320,8 +330,15 @@ for (const s of ['O', 'D']) $('preset' + s).onchange = e => {
 $('flip').onclick = () => { const p = P(); if (!p) return; snap(); p.marks.forEach(m => m.x = 1000 - m.x); p.lines.forEach(l => l.pts.forEach(a => a[0] = 1000 - a[0])); touch(); renderField(); };
 $('undo').onclick = undo;
 $('clearD').onclick = () => { const p = P(); if (!p) return; snap(); p.marks = []; p.lines = []; touch(); renderField(); };
-$('copyPrev').onclick = () => { const p = P(), i = R?.plays.indexOf(p); if (!i) return; const q = R.plays[i - 1]; snap(); p.marks = structuredClone(q.marks); p.lines = structuredClone(q.lines); p.formation ||= q.formation; p.front ||= q.front; touch(); renderForm(); renderField(); };
+$('copyPrev').onclick = () => { const p = P(), i = R?.plays.indexOf(p); if (!i) return; const q = R.plays[i - 1]; snap(); p.marks = structuredClone(q.marks); p.lines = structuredClone(q.lines); p.ov = q.ov && { ...q.ov }; p.formation ||= q.formation; p.front ||= q.front; touch(); renderForm(); renderField(); };
 $('showShot').onchange = renderField;
+$('fit').onclick = e => {
+  const p = P(), [k, v] = (e.target.dataset.fit || '').split(','); if (!p || !k) return;
+  if (!$('ov')) return alert('Fit only applies over a screenshot. Snap or add one first.');
+  snap(); const o = p.ov = { ...OV0, ...p.ov };
+  o[k] = k === 'rot' ? (o.rot + +v) % 360 : o[k] * +v; touch(); renderField();
+};
+$('fitReset').onclick = () => { const p = P(); if (p?.ov) { snap(); delete p.ov; touch(); renderField(); } };
 
 /* ---------- screenshots: paste, or pick from Photos on iPad ---------- */
 async function addShot(file, p = P()) {
