@@ -67,10 +67,10 @@ th{color:var(--dim);font-weight:500;position:sticky;top:0;background:var(--bg)}
       <select id="presetO" aria-label="Offense shell"><option value="">Offense shell</option></select>
       <select id="presetD" aria-label="Defense shell"><option value="">Defense shell</option></select>
       <button id="flip">Flip</button><button id="undo">Undo</button><button id="copyPrev">Copy previous</button><button id="clearD">Clear</button>
-      <label class="fileBtn">Add screenshot<input type="file" id="shotFile" accept="image/*" hidden></label><label class="hint"><input type="checkbox" id="showShot" checked> Show it</label>
+      <button id="snap">Snap frame</button><label class="fileBtn">Add screenshot<input type="file" id="shotFile" accept="image/*" hidden></label><label class="hint"><input type="checkbox" id="showShot" checked> Show it</label>
     </div>
     <svg id="field" viewBox="0 0 1000 600" role="img" aria-label="Formation diagram"></svg>
-    <p class="hint">Pause on the pre-snap look, take a screenshot, then tap Add screenshot to pick it from Photos (on a PC, Win+Shift+S then Ctrl+V). Shells give you 11 to drag into place.</p>
+    <p class="hint">Uploaded video: Mark play grabs the frame on screen automatically. Snap frame grabs it again if you move the video. YouTube: take a screenshot and tap Add screenshot (on a PC, Win+Shift+S then Ctrl+V). Shells give you 11 to drag into place.</p>
     <div id="form" class="grid"></div>
     <div class="row" style="margin-top:8px"><button id="delPlay">Delete play</button></div>
   </section>
@@ -197,6 +197,7 @@ function markPlay() {
   const p = { id: uid(), film: film?.id || '', t: Math.floor(now()), side: prev?.side || 'O', marks: [], lines: [] };
   R.plays.push(p); R.plays.sort((a, b) => (a.film === b.film ? a.t - b.t : 0));
   sel = p.id; touch(); renderAll();
+  if (film?.local && vid.readyState >= 2) addShot(vid); // auto snap the pre-snap frame
 }
 const num = p => R.plays.indexOf(p) + 1;
 const call = p => p.side === 'O' ? [p.ptype, p.concept, p.dir].filter(Boolean).join(' ') : [p.front, p.coverage, p.blitz && p.blitz !== 'None' ? 'blitz' : ''].filter(Boolean).join(' / ');
@@ -335,6 +336,11 @@ document.addEventListener('paste', e => {
   const item = [...e.clipboardData.items].find(i => i.type.startsWith('image/'));
   if (item) { e.preventDefault(); addShot(item.getAsFile()); }
 });
+$('snap').onclick = () => {
+  if (!film?.local) return alert('Snapping only works on uploaded videos. YouTube blocks it. Download the game film and use Upload video, or take a screenshot and use Add screenshot.');
+  if (vid.readyState < 2) return alert('Video is not loaded yet.');
+  addShot(vid);
+};
 $('shotFile').onchange = e => { if (e.target.files[0]) addShot(e.target.files[0]); e.target.value = ''; };
 
 /* ---------- export / import: the backup and what Claude builds the PDF from ---------- */
