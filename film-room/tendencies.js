@@ -39,6 +39,16 @@
         byOurFormation: group(D, p => p.formation).map(defRow) },
     };
   }
-  root.tendencies = tendencies;
-  if (typeof module !== 'undefined') module.exports = { tendencies, situation };
+  // per jersey number: who gets the ball and what they do with it
+  function carriers(plays) {
+    const O = plays.filter(p => p.side === 'O' && p.key), total = O.length;
+    return group(O, p => '#' + p.key).map(([k, ps]) => {
+      const y = ps.map(p => p.result).filter(v => v !== '' && v != null && !isNaN(v)).map(Number), sum = y.reduce((a, b) => a + b, 0);
+      return { key: k, n: ps.length, share: Math.round(100 * ps.length / total), runs: ps.filter(isRun).length, passes: ps.filter(isPass).length,
+        yds: y.length ? sum : null, ypt: y.length ? +(sum / y.length).toFixed(1) : null, long: y.length ? Math.max(...y) : null,
+        top: top(ps.map(p => p.concept)), dir: top(ps.map(p => p.dir)) };
+    });
+  }
+  root.tendencies = tendencies; root.carriers = carriers;
+  if (typeof module !== 'undefined') module.exports = { tendencies, situation, carriers };
 })(typeof window !== 'undefined' ? window : globalThis);

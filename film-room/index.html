@@ -37,10 +37,27 @@ th{color:var(--dim);font-weight:500;position:sticky;top:0;background:var(--bg)}
 .card svg{width:100%;display:block;background:var(--chalk);margin:6px 0}.card p{margin:2px 0;color:var(--dim)}
 .tscroll{overflow-x:auto;margin-bottom:6px}
 .empty{color:var(--dim);padding:30px;text-align:center}
+#print{display:none}
+@media print{
+  @page{margin:12mm}
+  body>*:not(#print){display:none!important}
+  body{background:#fff;color:#111;font-size:11px}
+  #print{display:block;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #print h1{font:700 30px var(--disp);text-transform:uppercase;margin:0 0 6px}#print h2{font-size:17px;margin:14px 0 4px;color:#111}#print h3{font:700 14px var(--disp);text-transform:uppercase;margin:0 0 4px}
+  #print table{font-size:10.5px}#print th{background:#eee;color:#333;position:static}#print td,#print th{border-bottom:1px solid #ccc;padding:2px 6px}
+  #print h2,#print h3{break-after:avoid}#print .tscroll{overflow:visible;break-inside:avoid}#print .hint,.pr-dim{color:#666}
+  #print svg{background:var(--chalk);display:block;width:100%;border-radius:2px}
+  .pr-cover{padding:30px 0 10px;border-bottom:3px solid #111;margin-bottom:10px}
+  .pr-break{break-before:page}
+  .pr-forms{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pr-form{break-inside:avoid}.pr-form svg{margin-top:3px}
+  .pr-play{break-inside:avoid;border-top:1px solid #999;padding:8px 0}
+  .pr-pics{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .pr-tags{display:flex;flex-wrap:wrap;gap:3px 12px;margin-top:5px}.pr-notes{margin:4px 0 0}
+}
 </style></head><body>
 <header>
   <h1>Film Room</h1>
-  <select id="report" aria-label="Opponent"></select><button id="newReport">New opponent</button><button id="export">Export</button><label class="fileBtn">Import<input type="file" id="importFile" accept=".json,application/json" hidden></label>
+  <select id="report" aria-label="Opponent"></select><button id="newReport">New opponent</button><button id="export">Export</button><button id="printBtn">Print report</button><label class="fileBtn">Import<input type="file" id="importFile" accept=".json,application/json" hidden></label>
   <span class="seg" id="tabs"><button data-t="chart" class="on">Chart film</button><button data-t="tend">Tendencies</button><button data-t="book">Playbook</button></span>
   <span id="status"></span>
 </header>
@@ -80,6 +97,7 @@ th{color:var(--dim);font-weight:500;position:sticky;top:0;background:var(--bg)}
 <div id="tend" hidden></div>
 <div id="book" hidden></div>
 </main>
+<div id="print"></div>
 <datalist id="dl-formation"></datalist><datalist id="dl-concept"></datalist><datalist id="dl-front"></datalist><datalist id="dl-coverage"></datalist>
 <script src="tendencies.js"></script>
 <script>
@@ -487,18 +505,52 @@ function tbl(title, rows, cols) {
   if (!rows.length) return '';
   return `<h2>${title}</h2><div class="tscroll"><table><thead><tr>${cols.map(c => `<th>${c[0]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${cols.map(c => `<td>${esc(r[c[1]] ?? '')}${r[c[1]] != null && c[2] ? c[2] : ''}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
-function renderTend() {
-  const t = tendencies(R?.plays || []);
+const carrierCols = [['Ball to #','key'],['Touches','n'],['Share','share','%'],['Runs','runs'],['Passes','passes'],['Total yds','yds'],['Yds/touch','ypt'],['Long','long'],['Top play','top'],['Direction','dir']];
+function tendHtml() {
+  const t = tendencies(R.plays), cs = carriers(R.plays);
   const oc = n => [[n,'key'],['Plays','n'],['Run','runPct','%'],['Pass','passPct','%'],['Top play','top'],['Direction','dir'],['Avg yds','yds']];
   const dc = n => [[n,'key'],['Snaps','n'],['Top front','front'],['Top coverage','coverage'],['Pressure','blitzPct','%'],['Avg yds allowed','yds']];
-  $('tend').innerHTML = (!R || !R.plays.length) ? '<div class="empty">Mark plays and tag them. Tendencies build here as you go.</div>'
-    : `<h2 style="margin-top:0">Their offense: ${t.offense.total} plays</h2>` + tbl('Overall', [t.offense.overall], oc(''))
+  return `<h2 style="margin-top:0">Their offense: ${t.offense.total} plays</h2>` + tbl('Overall', [t.offense.overall], oc(''))
+    + tbl(`Who gets the ball <small>(share of ${cs.reduce((a, c) => a + c.n, 0)} tagged touches)</small>`, cs, carrierCols)
     + tbl('By formation', t.offense.byFormation, oc('Formation')) + tbl('By down and distance', t.offense.bySituation, oc('Situation'))
-    + tbl('By hash', t.offense.byHash, oc('Hash')) + tbl('By play', t.offense.byConcept, oc('Play')) + tbl('By ball carrier', t.offense.byCarrier, oc('Ball to #'))
-    + `<h2>Their defense: ${t.defense.total} snaps</h2>` + tbl('Overall', [t.defense.overall], dc(''))
-    + tbl('By front', t.defense.byFront, dc('Front')) + tbl('By down and distance', t.defense.bySituation, dc('Situation'))
+    + tbl('By hash', t.offense.byHash, oc('Hash')) + tbl('By play', t.offense.byConcept, oc('Play'))
+    + (t.defense.total ? `<h2>Their defense: ${t.defense.total} snaps</h2>` + tbl('Overall', [t.defense.overall], dc(''))
+    + tbl('By front', t.defense.byFront, dc('Front')) + tbl('By down and distance', t.defense.bySituation, dc('Situation')) : '')
     + `<p class="hint">Small samples can mislead. Counts are shown so you can judge.</p>`;
 }
+function renderTend() {
+  $('tend').innerHTML = (!R || !R.plays.length) ? '<div class="empty">Mark plays and tag them. Tendencies build here as you go.</div>' : tendHtml();
+}
+
+/* ---------- print report: built into #print, browser prints it (Save as PDF) ---------- */
+const lbl = { t: 'Time', qtr: 'Qtr', yard: 'Yard line', hash: 'Hash', formation: 'Formation', strength: 'Strength', ptype: 'Type', concept: 'Play', dir: 'Dir', key: 'Ball to #', front: 'Front', coverage: 'Coverage', blitz: 'Pressure', blitzSide: 'From', result: 'Yds' };
+function playTags(p) {
+  const f = R.films.find(x => x.id === p.film);
+  const bits = [f && ['Film', f.label], p.down && ['D&D', `${p.down}&${p.dist ?? ''}`], ...Object.keys(lbl).map(k => k === 't' ? ['Time', fmtT(p.t)] : p[k] !== '' && p[k] != null && [lbl[k], (k === 'key' ? '#' : '') + p[k]])].filter(Boolean);
+  return bits.map(([k, v]) => `<span><b>${esc(k)}</b> ${esc(v)}</span>`).join('');
+}
+function reportHtml() {
+  const ps = R.plays, noOv = s => s.replace(' id="ov"', '');
+  const forms = new Map(); for (const q of ps) if (q.side === 'O' && q.formation && q.marks?.length) forms.set(q.formation, q);
+  const t = tendencies(ps).offense.byFormation;
+  return `<section class="pr-cover"><h1>Scouting report: ${esc(R.opponent)}</h1>
+    <p>${ps.filter(p => p.side === 'O').length} offensive plays, ${ps.filter(p => p.side === 'D').length} defensive snaps${R.films.length ? ' · Film: ' + R.films.map(f => esc(f.label)).join(', ') : ''}</p>
+    <p class="pr-dim">Printed ${new Date().toLocaleDateString()}</p></section>`
+    + `<section>${tendHtml()}</section>`
+    + (forms.size ? `<section class="pr-break"><h2>Formations</h2><div class="pr-forms">${[...forms.values()].map(q => { const r = t.find(x => x.key === q.formation) || {};
+        return `<div class="pr-form"><b>${esc(q.formation)}</b> <span class="pr-dim">${r.n || 0} plays · ${r.runPct ?? '-'}% run · ${r.passPct ?? '-'}% pass${r.top ? ' · top: ' + esc(r.top) : ''}</span><svg viewBox="${frame(q).join(' ')}">${diagram(q, false, frame(q))}</svg></div>`; }).join('')}</div></section>` : '')
+    + `<section class="pr-break"><h2>Every play</h2>${ps.map(p => `<div class="pr-play"><h3>#${num(p)} ${p.side === 'O' ? 'Their offense' : 'Their defense'}${p.name ? ': ' + esc(p.name) : ''}${call(p) ? ' · ' + esc(call(p)) : ''}</h3>
+      <div class="pr-pics">${p.shot && shotUrls[p.shot] ? `<svg viewBox="0 0 1000 600">${noOv(diagram(p, true))}</svg>` : ''}${p.marks?.length || p.lines?.length ? `<svg viewBox="${frame(p).join(' ')}">${diagram(p, false, frame(p))}</svg>` : ''}</div>
+      <div class="pr-tags">${playTags(p)}</div>${p.notes ? `<p class="pr-notes"><b>Notes:</b> ${esc(p.notes)}</p>` : ''}</div>`).join('')}</section>`;
+}
+async function printReport() {
+  if (!R?.plays.length) return alert('Mark some plays first.');
+  await flush(); await loadShots();
+  $('print').innerHTML = reportHtml();
+  await wait(400); // ponytail: lets the screenshot images paint before the print dialog grabs the page
+  print();
+}
+addEventListener('afterprint', () => { $('print').innerHTML = ''; });
 function renderBook() {
   const ps = (R?.plays || []).filter(p => p.inBook);
   $('book').innerHTML = ps.length ? `<div class="cards">${ps.map(p => `<div class="card" data-id="${esc(p.id)}"><b>${esc(p.name || p.concept || p.front || 'Play ' + num(p))}</b>
@@ -516,6 +568,7 @@ function selectPlay(id, jump) { sel = id; moveSel = null; const p = P(); renderA
 /* ---------- wiring ---------- */
 $('newReport').onclick = newReport;
 $('export').onclick = exportReport;
+$('printBtn').onclick = printReport;
 $('report').onchange = async e => { await flush(); if (e.target.value) loadReport(e.target.value); };
 $('addFilm').onclick = addFilm;
 $('film').onchange = e => loadFilm(e.target.value);
