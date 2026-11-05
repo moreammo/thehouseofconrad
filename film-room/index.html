@@ -56,7 +56,7 @@ th{color:var(--dim);font-weight:500;position:sticky;top:0;background:var(--bg)}
       <select id="rate" aria-label="Speed"><option value="1">1x</option><option value=".5">0.5x</option><option value=".25">0.25x</option></select>
       <button id="mark" class="on">Mark play (M)</button><a id="ytLink" target="_blank" rel="noopener" style="color:var(--dim)">Open on YouTube</a>
     </div>
-    <div id="strip"><table><thead><tr><th>#</th><th>Time</th><th>Side</th><th>D&amp;D</th><th>Formation</th><th>Call</th><th>Yds</th><th>PB</th></tr></thead><tbody id="plays"></tbody></table></div>
+    <div id="strip"><table><thead><tr><th>#</th><th>Time</th><th>Side</th><th>D&amp;D</th><th>Formation</th><th>Call</th><th>Ball</th><th>Yds</th><th>PB</th></tr></thead><tbody id="plays"></tbody></table></div>
   </section>
   <section id="editor">
     <div class="row">
@@ -67,7 +67,7 @@ th{color:var(--dim);font-weight:500;position:sticky;top:0;background:var(--bg)}
       <select id="presetO" aria-label="Offense shell"><option value="">Offense shell</option></select>
       <select id="presetD" aria-label="Defense shell"><option value="">Defense shell</option></select>
       <select id="reuse" aria-label="Reuse a saved look" style="max-width:220px"></select>
-      <button id="flip">Flip</button><button id="undo">Undo</button><button id="copyPrev">Copy previous</button><button id="clearD">Clear</button>
+      <button id="flip">Flip</button><button id="undo">Undo</button><button id="copyPrev">Copy previous</button><button id="clearLines">Clear lines</button><button id="clearD">Clear all</button>
       <button id="snap">Snap frame</button><button id="snapAll">Snap all</button><label class="fileBtn">Add screenshot<input type="file" id="shotFile" accept="image/*" hidden></label><label class="hint"><input type="checkbox" id="showShot" checked> Show it</label>
     </div>
     <div class="row" id="fit"><span class="hint">Fit drawing to video:</span><button data-fit="rot,-5" title="Rotate left">⟲</button><button data-fit="rot,5" title="Rotate right">⟳</button><button data-fit="sc,.92">Smaller</button><button data-fit="sc,1.08">Bigger</button><button data-fit="tilt,.92">Flatter</button><button data-fit="tilt,1.08">Taller</button><button id="fitReset">Reset fit</button></div>
@@ -207,13 +207,13 @@ function markPlay() {
 const num = p => R.plays.indexOf(p) + 1;
 const call = p => p.side === 'O' ? [p.ptype, p.concept, p.dir].filter(Boolean).join(' ') : [p.front, p.coverage, p.blitz && p.blitz !== 'None' ? 'blitz' : ''].filter(Boolean).join(' / ');
 function renderStrip() {
-  $('plays').innerHTML = R?.plays.map(p => `<tr data-id="${esc(p.id)}" class="${p.id === sel ? 'sel' : ''}"><td>${num(p)}</td><td>${fmtT(p.t)}</td><td>${p.side === 'O' ? 'Off' : 'Def'}</td><td>${p.down ? esc(p.down) + '&amp;' + esc(p.dist ?? '') : ''}</td><td>${esc(p.formation)}</td><td>${esc(call(p))}</td><td>${esc(p.result)}</td><td>${p.inBook ? '★' : ''}</td></tr>`).join('') || '';
+  $('plays').innerHTML = R?.plays.map(p => `<tr data-id="${esc(p.id)}" class="${p.id === sel ? 'sel' : ''}"><td>${num(p)}</td><td>${fmtT(p.t)}</td><td>${p.side === 'O' ? 'Off' : 'Def'}</td><td>${p.down ? esc(p.down) + '&amp;' + esc(p.dist ?? '') : ''}</td><td>${esc(p.formation)}</td><td>${esc(call(p))}</td><td>${p.key ? '#' + esc(p.key) : ''}</td><td>${esc(p.result)}</td><td>${p.inBook ? '★' : ''}</td></tr>`).join('') || '';
   $('plays').querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
 }
 const opt = (...a) => a.map(v => `<option>${esc(v)}</option>`).join('');
 const FIELDS = {
   common: [['t','Film time','time'],['down','Down','sel',['1','2','3','4']],['dist','Distance','num'],['qtr','Qtr','sel',['1','2','3','4','OT']],['yard','Yard line','text'],['hash','Hash','sel',['Left','Middle','Right']],['formation','Formation','list'],['strength','Strength','sel',['Left','Right','Balanced']]],
-  O: [['ptype','Play type','sel',['Run','Pass','RPO','Screen','Trick','Special']],['concept','Play / concept','list'],['dir','Direction','sel',['Left','Middle','Right']],['key','Key player #','text']],
+  O: [['ptype','Play type','sel',['Run','Pass','RPO','Screen','Trick','Special']],['concept','Play / concept','list'],['dir','Direction','sel',['Left','Middle','Right']],['key','Ball to #','text']],
   D: [['front','Front','list'],['coverage','Coverage','list'],['blitz','Blitz / stunt','sel',['None','DL stunt','LB','DB','Overload']],['blitzSide','Pressure from','sel',['Left','Middle','Right']]],
   end: [['result','Yards gained','num']],
 };
@@ -242,7 +242,7 @@ $('form').addEventListener('input', e => {
 $('form').addEventListener('click', e => { const s = e.target.dataset.side; if (s && P()) { e.preventDefault(); P().side = s; touch(); renderForm(); renderStrip(); } });
 
 /* ---------- diagram ---------- */
-const YD = 18.75, LOS = 375, TOOLS = [['move','Move'],['O','O'],['X','X'],['route','Route'],['block','Block'],['motion','Motion'],['erase','Erase'],['slide','Slide all']];
+const YD = 18.75, LOS = 375, TOOLS = [['move','Move'],['O','O'],['X','X'],['route','Route'],['block','Block'],['motion','Motion'],['ball','Ball'],['erase','Erase'],['slide','Slide all']];
 let tool = 'move', undoStack = [], drag = null;
 $('tools').innerHTML = TOOLS.map(([k, n]) => `<button data-tool="${k}" class="${k === tool ? 'on' : ''}">${n}</button>`).join('');
 $('tools').onclick = e => { const t = e.target.dataset.tool; if (t) { tool = t; [...$('tools').children].forEach(b => b.classList.toggle('on', b.dataset.tool === t)); } };
@@ -264,9 +264,11 @@ function lineSvg(l) {
 function markSvg(m, rot = 0) {
   // labels counter rotate so they read upright when the drawing is turned to fit the video
   const l = esc(m.l || ''), a = rot * Math.PI / 180, lx = m.x - 21 * Math.sin(a), ly = m.y - 21 * Math.cos(a);
-  return m.t === 'O'
+  // ball carrier: orange ring plus a football beside the player
+  const ball = m.ball ? `<circle cx="${m.x}" cy="${m.y}" r="28" fill="none" stroke="#ff6a2b" stroke-width="5"/><g transform="rotate(${-rot - 30} ${m.x + 30} ${m.y + 22})"><ellipse cx="${m.x + 30}" cy="${m.y + 22}" rx="13" ry="8" fill="#8a4b22" stroke="#fff" stroke-width="1.5"/><line x1="${m.x + 25}" x2="${m.x + 35}" y1="${m.y + 22}" y2="${m.y + 22}" stroke="#fff" stroke-width="1.5"/></g>` : '';
+  return ball + (m.t === 'O'
     ? `<circle cx="${m.x}" cy="${m.y}" r="20" fill="#fff"/><text x="${m.x}" y="${m.y + 6}" transform="rotate(${-rot} ${m.x} ${m.y})" text-anchor="middle" font-size="17" font-weight="700" fill="#102">${l}</text>`
-    : `<g stroke="#f2c230" stroke-width="5" stroke-linecap="round"><line x1="${m.x - 15}" y1="${m.y - 15}" x2="${m.x + 15}" y2="${m.y + 15}"/><line x1="${m.x + 15}" y1="${m.y - 15}" x2="${m.x - 15}" y2="${m.y + 15}"/></g><text x="${lx}" y="${ly}" transform="rotate(${-rot} ${lx} ${ly})" text-anchor="middle" dominant-baseline="middle" font-size="17" font-weight="700" fill="#f2c230">${l}</text>`;
+    : `<g stroke="#f2c230" stroke-width="5" stroke-linecap="round"><line x1="${m.x - 15}" y1="${m.y - 15}" x2="${m.x + 15}" y2="${m.y + 15}"/><line x1="${m.x + 15}" y1="${m.y - 15}" x2="${m.x - 15}" y2="${m.y + 15}"/></g><text x="${lx}" y="${ly}" transform="rotate(${-rot} ${lx} ${ly})" text-anchor="middle" dominant-baseline="middle" font-size="17" font-weight="700" fill="#f2c230">${l}</text>`);
 }
 /* fit: per play rotate/size/tilt/slide of the drawing, only applied over the screenshot; playbook cards stay top down */
 const OV0 = { rot: 0, sc: 1, tilt: 1, dx: 0, dy: 0 };
@@ -286,6 +288,12 @@ $('field').addEventListener('pointerdown', e => {
   const p = P(); if (!p) return; const q = pt(e); $('field').setPointerCapture(e.pointerId);
   const slide = tool === 'slide' || (tool === 'move' && $('ov') && !nearMark(p, q)); // drag empty space over a screenshot = slide the whole drawing
   if (slide) { if (!$('ov')) return; snap(); const o = p.ov = { ...OV0, ...p.ov }; drag = { o, start: pt(e, $('field')), dx: o.dx, dy: o.dy }; return; }
+  if (tool === 'ball') { // tap who got the ball; tap again to clear. Fills Key player # for tendencies.
+    const m = nearMark(p, q); if (!m) return; snap();
+    const on = !m.ball; p.marks.forEach(x => delete x.ball);
+    if (on) { m.ball = true; if (m.l) p.key = m.l; } else if (p.key === m.l) p.key = '';
+    touch(); renderForm(); renderStrip(); renderField(); return;
+  }
   if (tool === 'move') { const m = nearMark(p, q); if (m) { snap(); drag = { m, at: q, lines: p.lines.filter(l => Math.hypot(l.pts[0][0] - m.x, l.pts[0][1] - m.y) < 40) }; $('label').value = m.l || ''; drag.sel = m; moveSel = m; } }
   else if (tool === 'O' || tool === 'X') { snap(); const m = { t: tool, x: q[0], y: q[1], l: $('label').value.trim() }; p.marks.push(m); $('label').value = ''; moveSel = m; touch(); }
   else if (tool === 'erase') {
@@ -337,8 +345,10 @@ for (const s of ['O', 'D']) $('preset' + s).onchange = e => {
 };
 $('flip').onclick = () => { const p = P(); if (!p) return; snap(); p.marks.forEach(m => m.x = 1000 - m.x); p.lines.forEach(l => l.pts.forEach(a => a[0] = 1000 - a[0])); touch(); renderField(); };
 $('undo').onclick = undo;
-$('clearD').onclick = () => { const p = P(); if (!p) return; snap(); p.marks = []; p.lines = []; touch(); renderField(); };
-$('copyPrev').onclick = () => { const p = P(), i = R?.plays.indexOf(p); if (!i) return; const q = R.plays[i - 1]; snap(); p.marks = structuredClone(q.marks); p.lines = structuredClone(q.lines); p.ov = q.ov && { ...q.ov }; p.formation ||= q.formation; p.front ||= q.front; touch(); renderForm(); renderField(); };
+const noBall = ms => structuredClone(ms).map(m => (delete m.ball, m)); // who got the ball is per play, never copied
+$('clearLines').onclick =() => { const p = P(); if (!p?.lines.length) return; snap(); p.lines = []; touch(); renderField(); };
+$('clearD').onclick =() => { const p = P(); if (!p) return; snap(); p.marks = []; p.lines = []; touch(); renderField(); };
+$('copyPrev').onclick = () => { const p = P(), i = R?.plays.indexOf(p); if (!i) return; const q = R.plays[i - 1]; snap(); p.marks = noBall(q.marks); p.lines = structuredClone(q.lines); p.ov = q.ov && { ...q.ov }; p.formation ||= q.formation; p.front ||= q.front; touch(); renderForm(); renderField(); };
 $('showShot').onchange = renderField;
 
 /* reuse: formations/fronts already drawn on this opponent (their players only, numbers kept), or any whole earlier play */
@@ -354,8 +364,8 @@ function renderReuse() {
 $('reuse').onchange = e => {
   const p = P(), [k, id] = e.target.value.split(':'), q = R.plays.find(x => x.id === id); e.target.value = ''; if (!p || !q) return;
   snap();
-  if (k === 'p') { p.marks = structuredClone(q.marks); p.lines = structuredClone(q.lines); }
-  else { const t = q.side === 'O' ? 'O' : 'X'; p.marks = p.marks.filter(m => m.t !== t).concat(structuredClone(q.marks.filter(m => m.t === t))); }
+  if (k === 'p') { p.marks = noBall(q.marks); p.lines = structuredClone(q.lines); }
+  else { const t = q.side === 'O' ? 'O' : 'X'; p.marks = p.marks.filter(m => m.t !== t).concat(noBall(q.marks.filter(m => m.t === t))); }
   if (q.side === p.side) { if (q.side === 'O') p.formation ||= q.formation; else p.front ||= q.front; }
   touch(); renderForm(); renderField(); renderStrip();
 };
@@ -468,7 +478,7 @@ function renderTend() {
   $('tend').innerHTML = (!R || !R.plays.length) ? '<div class="empty">Mark plays and tag them. Tendencies build here as you go.</div>'
     : `<h2 style="margin-top:0">Their offense: ${t.offense.total} plays</h2>` + tbl('Overall', [t.offense.overall], oc(''))
     + tbl('By formation', t.offense.byFormation, oc('Formation')) + tbl('By down and distance', t.offense.bySituation, oc('Situation'))
-    + tbl('By hash', t.offense.byHash, oc('Hash')) + tbl('By play', t.offense.byConcept, oc('Play'))
+    + tbl('By hash', t.offense.byHash, oc('Hash')) + tbl('By play', t.offense.byConcept, oc('Play')) + tbl('By ball carrier', t.offense.byCarrier, oc('Ball to #'))
     + `<h2>Their defense: ${t.defense.total} snaps</h2>` + tbl('Overall', [t.defense.overall], dc(''))
     + tbl('By front', t.defense.byFront, dc('Front')) + tbl('By down and distance', t.defense.bySituation, dc('Situation'))
     + `<p class="hint">Small samples can mislead. Counts are shown so you can judge.</p>`;

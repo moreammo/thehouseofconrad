@@ -33,7 +33,7 @@
     return {
       offense: { total: O.length, overall: offRow(['All', O]),
         byFormation: group(O, p => p.formation).map(offRow), bySituation: group(O, situation).map(offRow),
-        byHash: group(O, hash).map(offRow), byConcept: group(O, p => p.concept).map(offRow) },
+        byHash: group(O, hash).map(offRow), byConcept: group(O, p => p.concept).map(offRow), byCarrier: group(O, p => p.key && '#' + p.key).map(offRow) },
       defense: { total: D.length, overall: defRow(['All', D]),
         byFront: group(D, p => p.front).map(defRow), bySituation: group(D, situation).map(defRow),
         byOurFormation: group(D, p => p.formation).map(defRow) },
