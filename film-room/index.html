@@ -19,7 +19,7 @@ main{padding:12px 14px}
 @media(max-width:1000px){#chart{grid-template-columns:minmax(0,1fr)}}
 .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}
 #yt-wrap{aspect-ratio:16/9;background:#000;display:grid;place-items:center;color:var(--dim);text-align:center;padding:0}
-#yt-wrap iframe{width:100%;height:100%;border:0}
+#yt-wrap iframe,#yt-wrap video{width:100%;height:100%;border:0;background:#000}
 #time{font:700 20px var(--disp);min-width:64px;text-align:center;font-variant-numeric:tabular-nums}
 #strip{max-height:30vh;overflow:auto;border:1px solid var(--line)}
 table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}th,td{padding:4px 8px;border-bottom:1px solid var(--line);text-align:left}
@@ -48,8 +48,8 @@ th{color:var(--dim);font-weight:500;position:sticky;top:0;background:var(--bg)}
 <div id="banner" class="banner" hidden></div>
 <div id="chart">
   <section>
-    <div class="row"><select id="film" aria-label="Game film" style="flex:1;min-width:140px"></select><input id="filmUrl" placeholder="Paste YouTube link" style="flex:2;min-width:160px"><button id="addFilm">Add film</button></div>
-    <div id="yt-wrap"><div id="yt">Add a YouTube link to load the film.</div></div>
+    <div class="row"><select id="film" aria-label="Game film" style="flex:1;min-width:140px"></select><input id="filmUrl" placeholder="Paste YouTube link" style="flex:2;min-width:160px"><button id="addFilm">Add film</button><label class="fileBtn">Upload video<input type="file" id="vidFile" accept="video/*" hidden></label></div>
+    <div id="yt-wrap"><div id="yt">Paste a YouTube link or upload a video to load the film.</div><video id="vid" controls playsinline preload="metadata" hidden></video></div>
     <div class="row" style="margin-top:8px">
       <button data-seek="-5">-5s</button><button data-seek="-1">-1s</button><button id="pp">Play/Pause</button><button data-seek="1">+1s</button><button data-seek="5">+5s</button>
       <span id="time">0:00</span>
@@ -125,12 +125,12 @@ function renderReports() {
 
 /* ---------- YouTube ---------- */
 let yt = null, ytReady = false, film = null, pendingSeek = null;
-function onYouTubeIframeAPIReady() { ytReady = true; if (film) cue(); }
+function onYouTubeIframeAPIReady() { ytReady = true; if (film && !film.local) cue(); }
 window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
 { const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; s.onerror = () => banner('Could not reach YouTube. Check your internet connection and reload.'); document.head.append(s); }
 function banner(t) { $('banner').textContent = t; $('banner').hidden = !t; }
 function renderFilms() {
-  $('film').innerHTML = R?.films.map(f => `<option value="${esc(f.id)}">${esc(f.label)}</option>`).join('') || '<option value="">No film yet</option>';
+  $('film').innerHTML = R?.films.map(f => `<option value="${esc(f.id)}">${esc(f.label)}${f.local ? ' (video file)' : ''}</option>`).join('') || '<option value="">No film yet</option>';
 }
 function addFilm() {
   const url = $('filmUrl').value.trim(), id = ytId(url);
@@ -142,18 +142,50 @@ function addFilm() {
 }
 function loadFilm(id) {
   film = R.films.find(f => f.id === id) || null; if (!film) return;
-  $('film').value = id; $('ytLink').href = `https://www.youtube.com/watch?v=${film.yt}`; banner('');
+  $('film').value = id; banner('');
+  const local = !!film.local;
+  vid.hidden = !local; $('yt').hidden = local; $('ytLink').hidden = local;
+  if (local) { try { yt?.pauseVideo?.(); } catch {} loadLocal(); return; }
+  vid.pause(); vid.removeAttribute('src'); vid.load();
+  $('ytLink').href = `https://www.youtube.com/watch?v=${film.yt}`;
   if (ytReady) cue();
 }
+
+/* ---------- uploaded video: saved in IndexedDB on this device, not in Export (too big) ---------- */
+const vid = $('vid'), vidMem = {}; let vidUrl = null;
+async function loadLocal() {
+  const f = film, start = pendingSeek ?? 0; pendingSeek = null;
+  const b = vidMem[f.id] || await get('vid:' + f.id).catch(() => null);
+  if (film !== f) return;
+  f.missing = !b;
+  if (!b) { vid.removeAttribute('src'); return banner(`The video "${f.name || f.label}" is not on this device. Tap Upload video and pick it again to reattach it to your plays.`); }
+  if (vidUrl) URL.revokeObjectURL(vidUrl);
+  vid.src = vidUrl = URL.createObjectURL(b);
+  vid.addEventListener('loadedmetadata', () => { vid.currentTime = start; vid.playbackRate = +$('rate').value; }, { once: true });
+}
+$('vidFile').onchange = async e => {
+  const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+  if (!R) return alert('Create an opponent first.');
+  let f = film?.local && film.missing ? film : null; // ponytail: re-upload reattaches to the missing film so plays keep their times
+  if (!f) {
+    const label = prompt('Name this game (ex: vs Knights, Oct 12)', file.name.replace(/\.[^.]+$/, '')) || `Game ${R.films.length + 1}`;
+    f = { id: uid(), label, local: true, name: file.name }; R.films.push(f);
+  }
+  vidMem[f.id] = file; delete f.missing;
+  touch(); renderFilms(); loadFilm(f.id);
+  status('Saving video on this device...');
+  try { await put('vid:' + f.id, file); status('Video saved on this device'); }
+  catch { status('Video plays now but is too big to keep on this device. You will need to upload it again next time.', true); }
+};
 function cue() {
   const start = pendingSeek ?? 0; pendingSeek = null;
   if (yt?.cueVideoById) { yt.cueVideoById({ videoId: film.yt, startSeconds: start }); return; }
   yt = new YT.Player('yt', { videoId: film.yt, playerVars: { rel: 0, playsinline: 1, modestbranding: 1, origin: location.origin, start },
     events: { onError: e => { if ([100, 101, 150, 153].includes(e.data)) banner('The owner of this video blocks playing it on other pages. Watch it with Open on YouTube, type the time into each play, and use screenshots as normal.'); } } });
 }
-const now = () => { try { return yt?.getCurrentTime?.() || 0; } catch { return 0; } };
-function seek(t) { if (yt?.seekTo) yt.seekTo(Math.max(0, t), true); }
-function togglePlay() { if (yt?.getPlayerState) yt.getPlayerState() === 1 ? yt.pauseVideo() : yt.playVideo(); }
+const now = () => { if (film?.local) return vid.currentTime || 0; try { return yt?.getCurrentTime?.() || 0; } catch { return 0; } };
+function seek(t) { if (film?.local) vid.currentTime = Math.max(0, t); else if (yt?.seekTo) yt.seekTo(Math.max(0, t), true); }
+function togglePlay() { if (film?.local) vid.paused ? vid.play() : vid.pause(); else if (yt?.getPlayerState) yt.getPlayerState() === 1 ? yt.pauseVideo() : yt.playVideo(); }
 setInterval(() => { $('time').textContent = fmtT(now()); }, 250);
 
 /* ---------- plays ---------- */
@@ -161,7 +193,7 @@ const P = () => R?.plays.find(p => p.id === sel);
 function markPlay() {
   if (!R) return alert('Create an opponent first.');
   const prev = R.plays.at(-1);
-  try { yt?.pauseVideo?.(); } catch {}
+  vid.pause(); try { yt?.pauseVideo?.(); } catch {}
   const p = { id: uid(), film: film?.id || '', t: Math.floor(now()), side: prev?.side || 'O', marks: [], lines: [] };
   R.plays.push(p); R.plays.sort((a, b) => (a.film === b.film ? a.t - b.t : 0));
   sel = p.id; touch(); renderAll();
@@ -368,7 +400,7 @@ $('report').onchange = async e => { await flush(); if (e.target.value) loadRepor
 $('addFilm').onclick = addFilm;
 $('film').onchange = e => loadFilm(e.target.value);
 $('pp').onclick = togglePlay;
-$('rate').onchange = e => yt?.setPlaybackRate?.(+e.target.value);
+$('rate').onchange = e => { vid.playbackRate = +e.target.value; yt?.setPlaybackRate?.(+e.target.value); };
 $('mark').onclick = markPlay;
 document.querySelectorAll('[data-seek]').forEach(b => b.onclick = () => seek(now() + +b.dataset.seek));
 $('plays').onclick = e => { const tr = e.target.closest('tr'); if (tr) selectPlay(tr.dataset.id, true); };
@@ -377,7 +409,7 @@ $('book').onclick = e => { const c = e.target.closest('.card'); if (c) { setTab(
 $('delPlay').onclick = () => { const p = P(); if (p && confirm(`Delete play ${num(p)}?`)) { R.plays.splice(R.plays.indexOf(p), 1); sel = R.plays.at(-1)?.id || null; touch(); renderAll(); } };
 addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !/INPUT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); return undo(); }
-  if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (/INPUT|TEXTAREA|SELECT|VIDEO/.test(e.target.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.key === 'm' || e.key === 'M') markPlay();
   else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
   else if (e.key === 'ArrowLeft') seek(now() - (e.shiftKey ? 5 : 1));
@@ -388,6 +420,6 @@ addEventListener('keydown', e => {
   catch { return banner('This browser is blocking saved data. Turn off Private Browsing and reload.'); }
   renderReports(); renderForm();
   if (index.length) loadReport(index.at(-1).id);
-  else banner('Your plays save on this device only. Tap Export after each session to back them up. Start with New opponent, then paste a YouTube link.');
+  else banner('Your plays save on this device only. Tap Export after each session to back them up. Start with New opponent, then paste a YouTube link or upload a video. Uploaded videos stay on this device and are not in the Export file.');
 })();
 </script></body></html>
