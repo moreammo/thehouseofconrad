@@ -67,7 +67,7 @@ th{color:var(--dim);font-weight:500;position:sticky;top:0;background:var(--bg)}
       <select id="presetO" aria-label="Offense shell"><option value="">Offense shell</option></select>
       <select id="presetD" aria-label="Defense shell"><option value="">Defense shell</option></select>
       <button id="flip">Flip</button><button id="undo">Undo</button><button id="copyPrev">Copy previous</button><button id="clearD">Clear</button>
-      <button id="snap">Snap frame</button><label class="fileBtn">Add screenshot<input type="file" id="shotFile" accept="image/*" hidden></label><label class="hint"><input type="checkbox" id="showShot" checked> Show it</label>
+      <button id="snap">Snap frame</button><button id="snapAll">Snap all</button><label class="fileBtn">Add screenshot<input type="file" id="shotFile" accept="image/*" hidden></label><label class="hint"><input type="checkbox" id="showShot" checked> Show it</label>
     </div>
     <svg id="field" viewBox="0 0 1000 600" role="img" aria-label="Formation diagram"></svg>
     <p class="hint">Uploaded video: Mark play grabs the frame on screen automatically. Snap frame grabs it again if you move the video. YouTube: take a screenshot and tap Add screenshot (on a PC, Win+Shift+S then Ctrl+V). Shells give you 11 to drag into place.</p>
@@ -167,6 +167,9 @@ $('vidFile').onchange = async e => {
   const file = e.target.files[0]; e.target.value = ''; if (!file) return;
   if (!R) return alert('Create an opponent first.');
   let f = film?.local && film.missing ? film : null; // ponytail: re-upload reattaches to the missing film so plays keep their times
+  if (!f && film && !film.local && confirm(`Use this file for "${film.label}" instead of the YouTube link? Plays you marked keep their times, so pick the same full game video.`)) {
+    f = film; f.local = true; f.name = file.name;
+  }
   if (!f) {
     const label = prompt('Name this game (ex: vs Knights, Oct 12)', file.name.replace(/\.[^.]+$/, '')) || `Game ${R.films.length + 1}`;
     f = { id: uid(), label, local: true, name: file.name }; R.films.push(f);
@@ -321,8 +324,8 @@ $('copyPrev').onclick = () => { const p = P(), i = R?.plays.indexOf(p); if (!i) 
 $('showShot').onchange = renderField;
 
 /* ---------- screenshots: paste, or pick from Photos on iPad ---------- */
-async function addShot(file) {
-  const p = P(); if (!p) return alert('Mark a play first, then add the screenshot.');
+async function addShot(file, p = P()) {
+  if (!p) return alert('Mark a play first, then add the screenshot.');
   try {
     const bmp = await createImageBitmap(file), k = Math.min(1, 1400 / bmp.width), c = document.createElement('canvas');
     c.width = bmp.width * k; c.height = bmp.height * k; c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
@@ -340,6 +343,18 @@ $('snap').onclick = () => {
   if (!film?.local) return alert('Snapping only works on uploaded videos. YouTube blocks it. Download the game film and use Upload video, or take a screenshot and use Add screenshot.');
   if (vid.readyState < 2) return alert('Video is not loaded yet.');
   addShot(vid);
+};
+$('snapAll').onclick = async () => {
+  if (!film?.local || vid.readyState < 1) return alert('Snap all only works on uploaded videos. Pick an uploaded game in the film list first.');
+  const todo = R.plays.filter(p => p.film === film.id && !p.shot);
+  if (!todo.length) return alert('Every play on this film already has a screenshot.');
+  vid.pause();
+  for (const [i, p] of todo.entries()) {
+    status(`Snapping ${i + 1} of ${todo.length}...`);
+    await new Promise(ok => { vid.addEventListener('seeked', ok, { once: true }); vid.currentTime = p.t; });
+    await addShot(vid, p);
+  }
+  renderField(); status(`Snapped ${todo.length} plays`);
 };
 $('shotFile').onchange = e => { if (e.target.files[0]) addShot(e.target.files[0]); e.target.value = ''; };
 
