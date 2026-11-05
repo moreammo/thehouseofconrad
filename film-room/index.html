@@ -57,7 +57,7 @@ th{color:var(--dim);font-weight:500;position:sticky;top:0;background:var(--bg)}
 </style></head><body>
 <header>
   <h1>Film Room</h1>
-  <select id="report" aria-label="Opponent"></select><button id="newReport">New opponent</button><button id="export">Export</button><button id="printBtn">Print report</button><label class="fileBtn">Import<input type="file" id="importFile" accept=".json,application/json" hidden></label>
+  <select id="report" aria-label="Opponent"></select><button id="newReport">New opponent</button><button id="export">Export</button><button id="printBtn">Print report</button><label class="hint"><input type="checkbox" id="printOv"> Drawing on printed screenshots</label><label class="fileBtn">Import<input type="file" id="importFile" accept=".json,application/json" hidden></label>
   <span class="seg" id="tabs"><button data-t="chart" class="on">Chart film</button><button data-t="tend">Tendencies</button><button data-t="book">Playbook</button></span>
   <span id="status"></span>
 </header>
@@ -543,7 +543,7 @@ function reportHtml() {
 }
 function playHtml(p) {
   return `<div class="pr-play"><h3>#${num(p)} ${p.side === 'O' ? 'Their offense' : 'Their defense'}${p.name ? ': ' + esc(p.name) : ''}${call(p) ? ' · ' + esc(call(p)) : ''}</h3>
-    <div class="pr-pics">${p.shot && shotUrls[p.shot] ? `<svg viewBox="0 0 1000 600">${diagram(p, true).replace(' id="ov"', '')}</svg>` : ''}${p.marks?.length || p.lines?.length ? `<svg viewBox="${frame(p).join(' ')}">${diagram(p, false, frame(p))}</svg>` : ''}</div>
+    <div class="pr-pics">${p.shot && shotUrls[p.shot] ? `<svg viewBox="0 0 1000 600">${$('printOv').checked ? diagram(p, true).replace(' id="ov"', '') : `<image href="${esc(shotUrls[p.shot])}" width="1000" height="600" preserveAspectRatio="xMidYMid meet"/>`}</svg>` : ''}${p.marks?.length || p.lines?.length ? `<svg viewBox="${frame(p).join(' ')}">${diagram(p, false, frame(p))}</svg>` : ''}</div>
     <div class="pr-tags">${playTags(p)}</div>${p.notes ? `<p class="pr-notes"><b>Notes:</b> ${esc(p.notes)}</p>` : ''}</div>`;
 }
 const bookHtml = ps => `<section class="pr-cover"><h1>Playbook: ${esc(R.opponent)}</h1><p>${ps.length} plays</p><p class="pr-dim">Printed ${new Date().toLocaleDateString()}</p></section>` + ps.map(playHtml).join('');
@@ -558,7 +558,7 @@ async function printReport(book) {
 addEventListener('afterprint', () => { $('print').innerHTML = ''; });
 function renderBook() {
   const ps = (R?.plays || []).filter(p => p.inBook);
-  $('book').innerHTML = ps.length ? `<div class="row"><button id="printBook">Print playbook</button><span class="hint">${ps.length} plays, with screenshots, diagrams, tags and notes. Save as PDF from the print screen.</span></div><div class="cards">${ps.map(p => `<div class="card" data-id="${esc(p.id)}"><b>${esc(p.name || p.concept || p.front || 'Play ' + num(p))}</b>
+  $('book').innerHTML = ps.length ? `<div class="row"><button id="printBook">Print playbook</button><span class="hint">${ps.length} plays, with screenshots, diagrams, tags and notes. Save as PDF from the print screen. The "Drawing on printed screenshots" box at the top turns the drawing on the screenshot on or off.</span></div><div class="cards">${ps.map(p => `<div class="card" data-id="${esc(p.id)}"><b>${esc(p.name || p.concept || p.front || 'Play ' + num(p))}</b>
     <svg viewBox="${frame(p).join(' ')}">${diagram(p, false, frame(p))}</svg><p>${p.side === 'O' ? 'Offense' : 'Defense'}${p.formation ? ' · ' + esc(p.formation) : ''}${call(p) ? ' · ' + esc(call(p)) : ''}</p><p>${esc(p.notes)}</p></div>`).join('')}</div>`
     : '<div class="empty">Check "Add to playbook" on a play and it shows up here.</div>';
 }
@@ -574,6 +574,8 @@ function selectPlay(id, jump) { sel = id; moveSel = null; const p = P(); renderA
 $('newReport').onclick = newReport;
 $('export').onclick = exportReport;
 $('printBtn').onclick = () => printReport(false);
+try { $('printOv').checked = localStorage.getItem('fr-printOv') === '1'; } catch {} // off by default: clean screenshot on prints
+$('printOv').onchange = e => { try { localStorage.setItem('fr-printOv', e.target.checked ? '1' : '0'); } catch {} };
 $('report').onchange = async e => { await flush(); if (e.target.value) loadReport(e.target.value); };
 $('addFilm').onclick = addFilm;
 $('film').onchange = e => loadFilm(e.target.value);
