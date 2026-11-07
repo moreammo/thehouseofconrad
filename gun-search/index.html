@@ -18,6 +18,9 @@ li b{display:block}li small{display:block;color:var(--dim);font-size:13px;overfl
 #status{color:var(--dim);font-size:14px}
 .note{margin-top:28px;font-size:13px;border-top:1px solid var(--line);padding-top:12px}
 a.back{color:var(--dim)}
+.row{display:flex;gap:8px}.row input{flex:1}
+button{font:inherit;color:var(--fg);background:var(--panel);border:2px solid var(--red);border-radius:10px;padding:0 14px;min-height:44px;cursor:pointer}
+#fb li{display:flex;gap:8px}#fb li a{flex:1}#fb li button{border-color:var(--line)}
 </style></head><body><main>
 <a class="back" href="/">← Home</a>
 <h1>TN Gun Classifieds</h1>
@@ -29,14 +32,33 @@ a.back{color:var(--dim)}
 
 <h2>Search other forums</h2>
 <ul id="more"></ul>
-<h2>Classifieds sites</h2>
+<h2>My Facebook groups</h2>
+<p>Facebook has no way for this page to pull group posts, so it searches your saved groups in your own logged-in Facebook. Only groups you're a member of will show results. Saved in this browser only.</p>
+<form id="fbadd" class="row">
+  <input id="fburl" type="url" placeholder="Paste group link: facebook.com/groups/…" aria-label="Facebook group link" required>
+  <button type="submit">Add</button>
+</form>
+<ul id="fb"></ul>
+
+<h2>Classifieds &amp; marketplaces</h2>
 <ul id="sites"></ul>
 
 <p class="note">Listings belong to their sellers on tngunowners.com. Tennessee doesn't require a background check between two TN residents, but selling to a prohibited person is a felony and out-of-state sales must go through an FFL. When in doubt, do the transfer at a local FFL.</p>
 </main>
 <script>
 const $ = id => document.getElementById(id), e = encodeURIComponent;
-let items = [];
+let items = [], groups = [];
+try { groups = JSON.parse(localStorage.getItem("fbGroups")) || []; } catch {}
+const saveGroups = () => { try { localStorage.setItem("fbGroups", JSON.stringify(groups)); } catch {} };
+
+$("fbadd").addEventListener("submit", ev => {
+  ev.preventDefault();
+  const m = $("fburl").value.match(/facebook\.com\/groups\/([\w.-]+)/i);
+  if (!m) { $("fburl").setCustomValidity("Needs to be a facebook.com/groups/ link"); $("fburl").reportValidity(); return; }
+  if (!groups.some(g => g.id === m[1])) groups.push({ id: m[1], name: prompt("Name this group", m[1].replace(/[-.]/g, " ")) || m[1] });
+  $("fburl").value = ""; saveGroups(); render();
+});
+$("fburl").addEventListener("input", () => $("fburl").setCustomValidity(""));
 
 function render() {
   const words = $("q").value.toLowerCase().split(/\s+/).filter(Boolean);
@@ -50,7 +72,7 @@ function render() {
     t.append(b, s); a.append(t);
     const li = document.createElement("li"); li.append(a); return li;
   }));
-  $("status").textContent = `${hits.length} of ${items.length} latest TGO listings`;
+  if (items.length) $("status").textContent = `${hits.length} of ${items.length} latest TGO listings`;
 
   const q = $("q").value.trim(), kw = q ? `"${q}" ` : "";
   // ponytail: these forums block bots, so Google site: search (past month) instead of feeds. Add a forum = add a line.
@@ -67,9 +89,17 @@ function render() {
     ["AR15.com Equipment Exchange", "Tennessee posts, past month", forum("ar15.com", "Tennessee ")],
     ["Rokslide Classifieds", "Tennessee posts, past month", forum("rokslide.com", "Tennessee ")],
   ]);
+  links("fb", groups.map(g => [g.name, "Facebook group", `https://www.facebook.com/groups/${e(g.id)}/${q ? "search/?q=" + e(q) : ""}`]));
+  $("fb").querySelectorAll("li").forEach((li, i) => {
+    const x = Object.assign(document.createElement("button"), { type: "button", textContent: "✕", ariaLabel: `Remove ${groups[i].name}` });
+    x.onclick = () => { groups.splice(i, 1); saveGroups(); render(); };
+    li.append(x);
+  });
   links("sites", [
     ["Gun Owners Club", "TN/KY classifieds, Nashville area", "https://www.gunownersclub.com/all/nashville-tn"],
     ["Guns Tennessee", "Free TN classifieds", "https://gunstennessee.com/classifieds/firearms"],
+    ["GunBroker", "Auctions, ships to your FFL", `https://www.gunbroker.com/All/search?Keywords=${e(q)}`],
+    ["GunsAmerica", "Dealer and private, ships to your FFL", `https://gunsamerica.com/search?keyword=${e(q)}`],
     ["Armslist", "Tennessee", `https://www.armslist.com/classifieds/search?location=tennessee${q ? "&search=" + e(q) : ""}`],
   ]);
 }
