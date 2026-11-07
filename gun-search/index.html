@@ -1,56 +1,87 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Gun Classifieds Search</title><meta name="robots" content="noindex">
+<title>TN Gun Classifieds</title><meta name="robots" content="noindex">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&display=swap">
 <style>
 :root{--bg:#060608;--panel:#121216;--line:#33333b;--fg:#f2f2f2;--dim:#a0a0aa;--red:#ba0c2f;color-scheme:dark}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 Oswald,system-ui,sans-serif}
-main{max-width:640px;margin:0 auto;padding:24px 16px}
-h1{text-transform:uppercase;letter-spacing:1px;margin:0 0 4px}p{color:var(--dim);margin:0 0 18px}
-label{display:block;font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin:12px 0 4px}
-input,select,button{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;min-height:44px}
-button{cursor:pointer;border:2px solid var(--red);text-transform:uppercase;letter-spacing:1px;margin-top:16px}
-button:hover{border-color:var(--fg)}:focus-visible{outline:3px solid var(--fg);outline-offset:2px}
-#links{list-style:none;padding:0;margin:20px 0 0;display:grid;gap:10px}
-#links a{display:block;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg);text-decoration:none}
-#links a:hover{border-color:var(--red)}#links small{display:block;color:var(--dim)}
+main{max-width:720px;margin:0 auto;padding:24px 16px}
+h1{text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px}h2{text-transform:uppercase;letter-spacing:1px;font-size:18px;margin:28px 0 8px}
+p{color:var(--dim);margin:0 0 14px}
+input{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;min-height:44px}
+:focus-visible{outline:3px solid var(--fg);outline-offset:2px}
+ul{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:10px}
+li a{display:flex;gap:12px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg);text-decoration:none}
+li a:hover{border-color:var(--red)}
+li img{width:84px;height:84px;object-fit:cover;border-radius:6px;flex:none;background:#000}
+li b{display:block}li small{display:block;color:var(--dim);font-size:13px;overflow-wrap:anywhere}
+#status{color:var(--dim);font-size:14px}
 .note{margin-top:28px;font-size:13px;border-top:1px solid var(--line);padding-top:12px}
 a.back{color:var(--dim)}
 </style></head><body><main>
 <a class="back" href="/">← Home</a>
-<h1>Gun Classifieds Search</h1>
-<p>One search, every major private sale listing site. Opens results on each site.</p>
+<h1>TN Gun Classifieds</h1>
+<p>Latest private sale listings from the TN Gun Owners Trading Post, plus search links for the rest of Tennessee.</p>
 
-<form id="f">
-  <label for="q">What are you looking for</label>
-  <input id="q" name="q" placeholder="Glock 19, Ruger 10/22, Benelli M4…" required>
-  <label for="st">State</label>
-  <select id="st" name="st"></select>
-  <button type="submit">Search</button>
-</form>
-<ul id="links" aria-live="polite"></ul>
+<input id="q" type="search" placeholder="Filter: Glock, 10/22, Murfreesboro…" aria-label="Filter listings">
+<p id="status" aria-live="polite">Loading listings…</p>
+<ul id="list"></ul>
 
-<p class="note">Private sales must follow federal and state law. Never sell to someone you have reason to believe is prohibited, and handgun sales across state lines must go through an FFL. When in doubt, do the transfer at a local FFL.</p>
+<h2>Search further back</h2>
+<ul id="more"></ul>
+
+<p class="note">Listings belong to their sellers on tngunowners.com. Tennessee doesn't require a background check between two TN residents, but selling to a prohibited person is a felony and out-of-state sales must go through an FFL. When in doubt, do the transfer at a local FFL.</p>
 </main>
 <script>
-const STATES = ["Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana","Maine","Maryland","Massachusetts","Michigan","Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada","New Hampshire","New Jersey","New Mexico","New York","North Carolina","North Dakota","Ohio","Oklahoma","Oregon","Pennsylvania","Rhode Island","South Carolina","South Dakota","Tennessee","Texas","Utah","Vermont","Virginia","Washington","West Virginia","Wisconsin","Wyoming"];
-const st = document.getElementById("st");
-st.innerHTML = STATES.map(s => `<option${s === "Georgia" ? " selected" : ""}>${s}</option>`).join("");
+const $ = id => document.getElementById(id), e = encodeURIComponent;
+let items = [];
 
-// ponytail: deep links, not scraping. Armslist/GunBroker block server requests (Cloudflare 403) and ban scraping in their ToS.
-const e = encodeURIComponent;
-const SITES = [
-  ["Armslist", "Local private party classifieds", (q, s) => `https://www.armslist.com/classifieds/search?location=${e(s.toLowerCase().replaceAll(" ", "-"))}&search=${e(q)}`],
-  ["GunBroker", "Auctions, ships to your FFL", (q) => `https://www.gunbroker.com/All/search?Keywords=${e(q)}`],
-  ["GunsAmerica", "Dealer and private listings", (q) => `https://gunsamerica.com/search?keyword=${e(q)}`],
-  ["State forums", "Classifieds on local gun forums via Google", (q, s) => `https://www.google.com/search?q=${e(`"${q}" ${s} (WTS OR "for sale") classifieds forum`)}`],
-];
+function render() {
+  const words = $("q").value.toLowerCase().split(/\s+/).filter(Boolean);
+  const hits = items.filter(i => words.every(w => i.hay.includes(w)));
+  $("list").replaceChildren(...hits.map(i => {
+    const a = Object.assign(document.createElement("a"), { href: i.link, target: "_blank", rel: "noopener" });
+    if (i.img) a.append(Object.assign(document.createElement("img"), { src: i.img, alt: "", loading: "lazy" }));
+    const t = document.createElement("div"), b = document.createElement("b"), s = document.createElement("small");
+    b.textContent = i.title;
+    s.textContent = `${i.date.toLocaleDateString()} · ${i.text}`;
+    t.append(b, s); a.append(t);
+    const li = document.createElement("li"); li.append(a); return li;
+  }));
+  $("status").textContent = `${hits.length} of ${items.length} latest TGO listings`;
 
-document.getElementById("f").addEventListener("submit", ev => {
-  ev.preventDefault();
-  const q = document.getElementById("q").value.trim(), s = st.value;
-  document.getElementById("links").innerHTML = SITES.map(([name, sub, url]) =>
-    `<li><a href="${url(q, s)}" target="_blank" rel="noopener">${name}<small>${sub}</small></a></li>`).join("");
-});
+  const q = $("q").value.trim();
+  $("more").replaceChildren(...[
+    ["TN Gun Owners: full classifieds search", q ? `https://www.tngunowners.com/forums/search/?q=${e(q)}&quick=1&type=forums_topic&nodes=39` : "https://www.tngunowners.com/forums/forum/39-firearms-classifieds/"],
+    ["Armslist: Tennessee", `https://www.armslist.com/classifieds/search?location=tennessee${q ? "&search=" + e(q) : ""}`],
+    ["Other TN forums via Google", `https://www.google.com/search?q=${e(`${q ? `"${q}" ` : ""}Tennessee (WTS OR "for sale") gun classifieds -site:tngunowners.com`)}`],
+  ].map(([name, href]) => {
+    const li = document.createElement("li");
+    li.append(Object.assign(document.createElement("a"), { href, target: "_blank", rel: "noopener", textContent: name }));
+    return li;
+  }));
+}
+
+fetch("/api/tn-classifieds").then(r => r.ok ? r.text() : Promise.reject()).then(xml => {
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  items = [...doc.querySelectorAll("item")].map(it => {
+    const get = tag => it.querySelector(tag)?.textContent || "";
+    const body = new DOMParser().parseFromString(get("description"), "text/html");
+    const imgHref = body.querySelector("a.ipsAttachLink_image")?.getAttribute("href") || "";
+    const text = body.body.textContent.replace(/\s+/g, " ").trim();
+    const link = get("link");
+    return {
+      title: get("title"),
+      link: link.startsWith("https://www.tngunowners.com/") ? link : "https://www.tngunowners.com/forums/forum/39-firearms-classifieds/",
+      img: imgHref.startsWith("//") ? "https:" + imgHref : "",
+      date: new Date(get("pubDate")),
+      text: text.length > 160 ? text.slice(0, 160) + "…" : text,
+      hay: (get("title") + " " + text).toLowerCase(),
+    };
+  });
+  render();
+}).catch(() => { $("status").textContent = "Couldn't load TGO listings right now. Use the search links below."; render(); });
+
+$("q").addEventListener("input", render);
 </script>
 </body></html>
