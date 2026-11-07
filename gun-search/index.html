@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TN Gun Classifieds</title><meta name="robots" content="noindex">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&display=swap">
+<style>
+:root{--bg:#060608;--panel:#121216;--line:#33333b;--fg:#f2f2f2;--dim:#a0a0aa;--red:#ba0c2f;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 Oswald,system-ui,sans-serif}
+main{max-width:720px;margin:0 auto;padding:24px 16px}
+h1{text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px}h2{text-transform:uppercase;letter-spacing:1px;font-size:18px;margin:28px 0 8px}
+p{color:var(--dim);margin:0 0 14px}
+input{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;min-height:44px}
+:focus-visible{outline:3px solid var(--fg);outline-offset:2px}
+ul{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:10px}
+li a{display:flex;gap:12px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg);text-decoration:none}
+li a:hover{border-color:var(--red)}
+li img{width:84px;height:84px;object-fit:cover;border-radius:6px;flex:none;background:#000}
+li b{display:block}li small{display:block;color:var(--dim);font-size:13px;overflow-wrap:anywhere}
+#status{color:var(--dim);font-size:14px}
+.note{margin-top:28px;font-size:13px;border-top:1px solid var(--line);padding-top:12px}
+a.back{color:var(--dim)}
+.row{display:flex;gap:8px}.row input{flex:1}
+button{font:inherit;color:var(--fg);background:var(--panel);border:2px solid var(--red);border-radius:10px;padding:0 14px;min-height:44px;cursor:pointer}
+#fb li{display:flex;gap:8px}#fb li a{flex:1}#fb li button{border-color:var(--line)}
+</style></head><body><main>
+<a class="back" href="/">← Home</a>
+<h1>TN Gun Classifieds</h1>
+<p>Latest private sale listings from the TN Gun Owners Trading Post, plus one-tap searches of the other forums Tennessee sellers post on.</p>
+
+<input id="q" type="search" placeholder="Filter: Glock, 10/22, Murfreesboro…" aria-label="Filter listings">
+<p id="status" aria-live="polite">Loading listings…</p>
+<ul id="list"></ul>
+
+<h2>Search other forums</h2>
+<ul id="more"></ul>
+<h2>My Facebook groups</h2>
+<p>Facebook has no way for this page to pull group posts, so it searches your saved groups in your own logged-in Facebook. Only groups you're a member of will show results. Saved in this browser only.</p>
+<form id="fbadd" class="row">
+  <input id="fburl" type="url" placeholder="Paste group link: facebook.com/groups/…" aria-label="Facebook group link" required>
+  <button type="submit">Add</button>
+</form>
+<ul id="fb"></ul>
+
+<h2>Classifieds &amp; marketplaces</h2>
+<ul id="sites"></ul>
+
+<p class="note">Listings belong to their sellers on tngunowners.com. Tennessee doesn't require a background check between two TN residents, but selling to a prohibited person is a felony and out-of-state sales must go through an FFL. When in doubt, do the transfer at a local FFL.</p>
+</main>
+<script>
+const $ = id => document.getElementById(id), e = encodeURIComponent;
+let items = [], groups = [];
+try { groups = JSON.parse(localStorage.getItem("fbGroups")) || []; } catch {}
+const saveGroups = () => { try { localStorage.setItem("fbGroups", JSON.stringify(groups)); } catch {} };
+
+$("fbadd").addEventListener("submit", ev => {
+  ev.preventDefault();
+  const m = $("fburl").value.match(/facebook\.com\/groups\/([\w.-]+)/i);
+  if (!m) { $("fburl").setCustomValidity("Needs to be a facebook.com/groups/ link"); $("fburl").reportValidity(); return; }
+  if (!groups.some(g => g.id === m[1])) groups.push({ id: m[1], name: prompt("Name this group", m[1].replace(/[-.]/g, " ")) || m[1] });
+  $("fburl").value = ""; saveGroups(); render();
+});
+$("fburl").addEventListener("input", () => $("fburl").setCustomValidity(""));
+
+function render() {
+  const words = $("q").value.toLowerCase().split(/\s+/).filter(Boolean);
+  const hits = items.filter(i => words.every(w => i.hay.includes(w)));
+  $("list").replaceChildren(...hits.map(i => {
+    const a = Object.assign(document.createElement("a"), { href: i.link, target: "_blank", rel: "noopener" });
+    if (i.img) a.append(Object.assign(document.createElement("img"), { src: i.img, alt: "", loading: "lazy" }));
+    const t = document.createElement("div"), b = document.createElement("b"), s = document.createElement("small");
+    b.textContent = i.title;
+    s.textContent = `${i.date.toLocaleDateString()} · ${i.text}`;
+    t.append(b, s); a.append(t);
+    const li = document.createElement("li"); li.append(a); return li;
+  }));
+  if (items.length) $("status").textContent = `${hits.length} of ${items.length} latest TGO listings`;
+
+  const q = $("q").value.trim(), kw = q ? `"${q}" ` : "";
+  // ponytail: these forums block bots, so Google site: search (past month) instead of feeds. Add a forum = add a line.
+  const forum = (site, extra = "") => `https://www.google.com/search?tbs=qdr:m&q=${e(`site:${site} ${kw}${extra}(WTS OR "for sale" OR FS)`)}`;
+  const links = (ul, rows) => $(ul).replaceChildren(...rows.map(([name, sub, href]) => {
+    const li = document.createElement("li"), a = Object.assign(document.createElement("a"), { href, target: "_blank", rel: "noopener" });
+    const t = document.createElement("div"), b = document.createElement("b"), s = document.createElement("small");
+    b.textContent = name; s.textContent = sub; t.append(b, s); a.append(t); li.append(a); return li;
+  }));
+  links("more", [
+    ["TN Gun Owners", "Full classifieds search, every listing ever posted", q ? `https://www.tngunowners.com/forums/search/?q=${e(q)}&quick=1&type=forums_topic&nodes=39` : "https://www.tngunowners.com/forums/forum/39-firearms-classifieds/"],
+    ["TNDeer", "Tennessee hunting forum, past month", forum("tndeer.com")],
+    ["The Outdoors Trader", "Tennessee posts, past month", forum("theoutdoorstrader.com", "Tennessee ")],
+    ["AR15.com Equipment Exchange", "Tennessee posts, past month", forum("ar15.com", "Tennessee ")],
+    ["Rokslide Classifieds", "Tennessee posts, past month", forum("rokslide.com", "Tennessee ")],
+  ]);
+  links("fb", groups.map(g => [g.name, "Facebook group", `https://www.facebook.com/groups/${e(g.id)}/${q ? "search/?q=" + e(q) : ""}`]));
+  $("fb").querySelectorAll("li").forEach((li, i) => {
+    const x = Object.assign(document.createElement("button"), { type: "button", textContent: "✕", ariaLabel: `Remove ${groups[i].name}` });
+    x.onclick = () => { groups.splice(i, 1); saveGroups(); render(); };
+    li.append(x);
+  });
+  links("sites", [
+    ["Gun Owners Club", "TN/KY classifieds, Nashville area", "https://www.gunownersclub.com/all/nashville-tn"],
+    ["Guns Tennessee", "Free TN classifieds", "https://gunstennessee.com/classifieds/firearms"],
+    ["GunBroker", "Auctions, ships to your FFL", `https://www.gunbroker.com/All/search?Keywords=${e(q)}`],
+    ["GunsAmerica", "Dealer and private, ships to your FFL", `https://gunsamerica.com/search?keyword=${e(q)}`],
+    ["Armslist", "Tennessee", `https://www.armslist.com/classifieds/search?location=tennessee${q ? "&search=" + e(q) : ""}`],
+  ]);
+}
+
+fetch("/api/tn-classifieds").then(r => r.ok ? r.text() : Promise.reject()).then(xml => {
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  items = [...doc.querySelectorAll("item")].map(it => {
+    const get = tag => it.querySelector(tag)?.textContent || "";
+    const body = new DOMParser().parseFromString(get("description"), "text/html");
+    const imgHref = body.querySelector("a.ipsAttachLink_image")?.getAttribute("href") || "";
+    const text = body.body.textContent.replace(/\s+/g, " ").trim();
+    const link = get("link");
+    return {
+      title: get("title"),
+      link: link.startsWith("https://www.tngunowners.com/") ? link : "https://www.tngunowners.com/forums/forum/39-firearms-classifieds/",
+      img: imgHref.startsWith("//") ? "https:" + imgHref : "",
+      date: new Date(get("pubDate")),
+      text: text.length > 160 ? text.slice(0, 160) + "…" : text,
+      hay: (get("title") + " " + text).toLowerCase(),
+    };
+  });
+  render();
+}).catch(() => { $("status").textContent = "Couldn't load TGO listings right now. Use the search links below."; render(); });
+
+$("q").addEventListener("input", render);
+</script>
+</body></html>
