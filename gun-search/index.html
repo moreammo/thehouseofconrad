@@ -21,14 +21,16 @@ a.back{color:var(--dim)}
 </style></head><body><main>
 <a class="back" href="/">← Home</a>
 <h1>TN Gun Classifieds</h1>
-<p>Latest private sale listings from the TN Gun Owners Trading Post, plus search links for the rest of Tennessee.</p>
+<p>Latest private sale listings from the TN Gun Owners Trading Post, plus one-tap searches of the other forums Tennessee sellers post on.</p>
 
 <input id="q" type="search" placeholder="Filter: Glock, 10/22, Murfreesboro…" aria-label="Filter listings">
 <p id="status" aria-live="polite">Loading listings…</p>
 <ul id="list"></ul>
 
-<h2>Search further back</h2>
+<h2>Search other forums</h2>
 <ul id="more"></ul>
+<h2>Classifieds sites</h2>
+<ul id="sites"></ul>
 
 <p class="note">Listings belong to their sellers on tngunowners.com. Tennessee doesn't require a background check between two TN residents, but selling to a prohibited person is a felony and out-of-state sales must go through an FFL. When in doubt, do the transfer at a local FFL.</p>
 </main>
@@ -50,16 +52,26 @@ function render() {
   }));
   $("status").textContent = `${hits.length} of ${items.length} latest TGO listings`;
 
-  const q = $("q").value.trim();
-  $("more").replaceChildren(...[
-    ["TN Gun Owners: full classifieds search", q ? `https://www.tngunowners.com/forums/search/?q=${e(q)}&quick=1&type=forums_topic&nodes=39` : "https://www.tngunowners.com/forums/forum/39-firearms-classifieds/"],
-    ["Armslist: Tennessee", `https://www.armslist.com/classifieds/search?location=tennessee${q ? "&search=" + e(q) : ""}`],
-    ["Other TN forums via Google", `https://www.google.com/search?q=${e(`${q ? `"${q}" ` : ""}Tennessee (WTS OR "for sale") gun classifieds -site:tngunowners.com`)}`],
-  ].map(([name, href]) => {
-    const li = document.createElement("li");
-    li.append(Object.assign(document.createElement("a"), { href, target: "_blank", rel: "noopener", textContent: name }));
-    return li;
+  const q = $("q").value.trim(), kw = q ? `"${q}" ` : "";
+  // ponytail: these forums block bots, so Google site: search (past month) instead of feeds. Add a forum = add a line.
+  const forum = (site, extra = "") => `https://www.google.com/search?tbs=qdr:m&q=${e(`site:${site} ${kw}${extra}(WTS OR "for sale" OR FS)`)}`;
+  const links = (ul, rows) => $(ul).replaceChildren(...rows.map(([name, sub, href]) => {
+    const li = document.createElement("li"), a = Object.assign(document.createElement("a"), { href, target: "_blank", rel: "noopener" });
+    const t = document.createElement("div"), b = document.createElement("b"), s = document.createElement("small");
+    b.textContent = name; s.textContent = sub; t.append(b, s); a.append(t); li.append(a); return li;
   }));
+  links("more", [
+    ["TN Gun Owners", "Full classifieds search, every listing ever posted", q ? `https://www.tngunowners.com/forums/search/?q=${e(q)}&quick=1&type=forums_topic&nodes=39` : "https://www.tngunowners.com/forums/forum/39-firearms-classifieds/"],
+    ["TNDeer", "Tennessee hunting forum, past month", forum("tndeer.com")],
+    ["The Outdoors Trader", "Tennessee posts, past month", forum("theoutdoorstrader.com", "Tennessee ")],
+    ["AR15.com Equipment Exchange", "Tennessee posts, past month", forum("ar15.com", "Tennessee ")],
+    ["Rokslide Classifieds", "Tennessee posts, past month", forum("rokslide.com", "Tennessee ")],
+  ]);
+  links("sites", [
+    ["Gun Owners Club", "TN/KY classifieds, Nashville area", "https://www.gunownersclub.com/all/nashville-tn"],
+    ["Guns Tennessee", "Free TN classifieds", "https://gunstennessee.com/classifieds/firearms"],
+    ["Armslist", "Tennessee", `https://www.armslist.com/classifieds/search?location=tennessee${q ? "&search=" + e(q) : ""}`],
+  ]);
 }
 
 fetch("/api/tn-classifieds").then(r => r.ok ? r.text() : Promise.reject()).then(xml => {
